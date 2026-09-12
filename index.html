@@ -10,31 +10,28 @@
   <section id="outer-world" class="world">
     <canvas id="ascii-canvas"></canvas>
 
-    <div id="tv-stage">
-      <button type="button" id="tv" class="tv" aria-label="Enter through CRT">
-        <div class="tv-3d">
-          <div class="tv-side tv-side-right"></div>
-          <div class="tv-side tv-side-bottom"></div>
-          <div class="tv-front">
-            <div class="tv-bezel">
-              <div class="tv-screen">
-                <div class="tv-scanlines"></div>
-                <div class="tv-glow"></div>
-                <div class="tv-noise"></div>
-                <span class="tv-hint">ENTER</span>
+    <div id="mac-stage">
+      <div id="mac" class="mac" role="img" aria-label="Retro Macintosh">
+        <div class="mac-3d">
+          <div class="mac-top"></div>
+          <div class="mac-side-right"></div>
+          <div class="mac-front">
+            <div class="mac-bezel">
+              <div class="mac-screen">
+                <div class="mac-scanlines"></div>
+                <div class="mac-noise"></div>
+                <span class="mac-hint">ENTER</span>
               </div>
-            </div>
-            <div class="tv-knobs">
-              <span></span><span></span>
+              <div class="mac-floppy"></div>
+              <div class="mac-logo"> macintosh </div>
             </div>
           </div>
-          <div class="tv-stand-neck"></div>
-          <div class="tv-stand-base"></div>
+          <div class="mac-chin"></div>
         </div>
-      </button>
+      </div>
     </div>
 
-    <div id="scroll-hint">scroll or click TV to enter</div>
+    <div id="scroll-hint">scroll to enter · scroll up to exit</div>
   </section>
 
   <section id="inner-world" class="world">
@@ -44,8 +41,9 @@
         <div class="crt-vignette"></div>
         <div class="crt-noise"></div>
         <div class="crt-content">
-          <h1 id="crt-text" class="crt-text">Hello World</h1>
+          <h1 class="crt-text">Hello World</h1>
           <p class="crt-sub">life is art’s whisper</p>
+          <p class="crt-back">scroll up to leave</p>
         </div>
       </div>
     </div>
