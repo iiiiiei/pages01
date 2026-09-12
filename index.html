@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iiiiiei — Phase 1</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <section id="outer-world" class="world">
+    <canvas id="ascii-canvas"></canvas>
+    <div id="tv-stage">
+      <div id="tv" class="tv">
+        <div class="tv-body">
+          <div class="tv-bezel">
+            <div class="tv-screen" id="tv-screen">
+              <div class="tv-screen-content">
+                <div class="tv-scanlines"></div>
+                <div class="tv-glow"></div>
+                <div class="tv-noise"></div>
+                <span class="tv-hint">ENTER</span>
+              </div>
+            </div>
+          </div>
+          <div class="tv-stand"></div>
+        </div>
+      </div>
+    </div>
+    <div id="scroll-hint">scroll to enter</div>
+  </section>
+  <section id="inner-world" class="world">
+    <div class="crt-frame">
+      <div class="crt-fisheye">
+        <div class="crt-scanlines"></div>
+        <div class="crt-vignette"></div>
+        <div class="crt-noise"></div>
+        <div class="crt-content">
+          <h1 id="crt-text" class="crt-text">Hello World</h1>
+          <p class="crt-sub">life is art’s whisper</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <script src="main.js"></script>
+</body>
+</html>
