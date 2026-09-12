@@ -9,25 +9,34 @@
 <body>
   <section id="outer-world" class="world">
     <canvas id="ascii-canvas"></canvas>
+
     <div id="tv-stage">
-      <div id="tv" class="tv">
-        <div class="tv-body">
-          <div class="tv-bezel">
-            <div class="tv-screen" id="tv-screen">
-              <div class="tv-screen-content">
+      <button type="button" id="tv" class="tv" aria-label="Enter through CRT">
+        <div class="tv-3d">
+          <div class="tv-side tv-side-right"></div>
+          <div class="tv-side tv-side-bottom"></div>
+          <div class="tv-front">
+            <div class="tv-bezel">
+              <div class="tv-screen">
                 <div class="tv-scanlines"></div>
                 <div class="tv-glow"></div>
                 <div class="tv-noise"></div>
                 <span class="tv-hint">ENTER</span>
               </div>
             </div>
+            <div class="tv-knobs">
+              <span></span><span></span>
+            </div>
           </div>
-          <div class="tv-stand"></div>
+          <div class="tv-stand-neck"></div>
+          <div class="tv-stand-base"></div>
         </div>
-      </div>
+      </button>
     </div>
-    <div id="scroll-hint">scroll to enter</div>
+
+    <div id="scroll-hint">scroll or click TV to enter</div>
   </section>
+
   <section id="inner-world" class="world">
     <div class="crt-frame">
       <div class="crt-fisheye">
@@ -41,6 +50,7 @@
       </div>
     </div>
   </section>
+
   <script src="main.js"></script>
 </body>
 </html>
