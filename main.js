@@ -17,51 +17,57 @@
     width: 0,
     height: 0,
     tvCenter: { x: 0, y: 0 },
-    tvSize: { w: 220, h: 180 },
+    tvSize: { w: 240, h: 200 },
   };
 
-  const ASCII_RAMP = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-  const CELL = 10;
+  const ASCII_RAMP = ".:;+=xX$&#@";
+  const CELL = 9;
+  let targetScroll = 0;
 
   function resize() {
     state.width = window.innerWidth;
     state.height = window.innerHeight;
     canvas.width = state.width;
     canvas.height = state.height;
-    const tvW = 220;
-    const tvH = 180;
+    const tvW = 240, tvH = 200;
     state.tvSize = { w: tvW, h: tvH };
-    state.tvCenter.x = state.width * 0.12 + tvW * 0.5;
-    state.tvCenter.y = state.height - state.height * 0.14 - tvH * 0.5;
+    state.tvCenter.x = state.width * 0.1 + tvW * 0.45;
+    state.tvCenter.y = state.height - state.height * 0.12 - tvH * 0.45;
   }
 
   function onPointerMove(e) {
-    const x = e.clientX ?? (e.touches && e.touches[0].clientX) ?? 0;
-    const y = e.clientY ?? (e.touches && e.touches[0].clientY) ?? 0;
+    const x = e.clientX ?? 0;
+    const y = e.clientY ?? 0;
     state.mousePx.x = x;
     state.mousePx.y = y;
-    state.mouse.x = x / state.width;
-    state.mouse.y = y / state.height;
+    state.mouse.x = state.width ? x / state.width : 0.5;
+    state.mouse.y = state.height ? y / state.height : 0.5;
 
     if (!state.entered) {
-      const rotX = (state.mouse.y - 0.5) * -28;
-      const rotY = (state.mouse.x - 0.35) * 8;
-      tv.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+      const rotX = (state.mouse.y - 0.5) * -36;
+      const rotY = (state.mouse.x - 0.28) * 14;
+      tv.style.transform = "rotateX(" + rotX + "deg) rotateY(" + rotY + "deg)";
     }
   }
-
-  let targetScroll = 0;
 
   function onWheel(e) {
     if (state.entered) return;
     e.preventDefault();
-    targetScroll += e.deltaY * 0.0012;
-    targetScroll = Math.max(0, Math.min(1.15, targetScroll));
+    targetScroll += e.deltaY * 0.0015;
+    targetScroll = Math.max(0, Math.min(1.2, targetScroll));
+  }
+
+  function enterInnerWorld() {
+    if (state.entered) return;
+    state.entered = true;
+    targetScroll = 1.2;
+    outerWorld.classList.add("is-hidden");
+    innerWorld.classList.add("is-active");
+    document.body.style.cursor = "default";
   }
 
   function drawAsciiFrame() {
-    const w = state.width;
-    const h = state.height;
+    const w = state.width, h = state.height;
     if (w < 10 || h < 10) return;
 
     ctx.fillStyle = "#000";
@@ -69,17 +75,20 @@
 
     const cols = Math.ceil(w / CELL);
     const rows = Math.ceil(h / CELL);
-
     const lightX = state.mousePx.x;
     const lightY = state.mousePx.y;
     const tvX = state.tvCenter.x;
     const tvY = state.tvCenter.y;
-    const tvW = state.tvSize.w;
-    const tvH = state.tvSize.h;
+    const tvW = state.tvSize.w * 0.72;
+    const tvH = state.tvSize.h * 0.72;
 
-    const maxDist = Math.hypot(w, h) * 0.55;
+    const toTvX = tvX - lightX;
+    const toTvY = tvY - lightY;
+    const tvDist = Math.hypot(toTvX, toTvY) || 1;
+    const shadowDirX = toTvX / tvDist;
+    const shadowDirY = toTvY / tvDist;
 
-    ctx.font = `${CELL}px "Courier New", monospace`;
+    ctx.font = (CELL + 1) + 'px "Courier New", monospace';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
@@ -88,92 +97,56 @@
         const cx = col * CELL + CELL * 0.5;
         const cy = row * CELL + CELL * 0.5;
 
-        if (
-          cx > tvX - tvW * 0.55 &&
-          cx < tvX + tvW * 0.55 &&
-          cy > tvY - tvH * 0.55 &&
-          cy < tvY + tvH * 0.6
-        ) {
-          continue;
-        }
+        if (cx > tvX - tvW * 0.55 && cx < tvX + tvW * 0.55 &&
+            cy > tvY - tvH * 0.55 && cy < tvY + tvH * 0.65) continue;
 
-        const dxL = cx - lightX;
-        const dyL = cy - lightY;
-        const distLight = Math.hypot(dxL, dyL);
-        let light = 1 - Math.min(1, distLight / maxDist);
-        light = light * light;
-
-        const toTvX = tvX - lightX;
-        const toTvY = tvY - lightY;
         const toCellX = cx - lightX;
         const toCellY = cy - lightY;
+        const t = toCellX * shadowDirX + toCellY * shadowDirY;
+        if (t < tvDist * 0.85) continue;
 
-        const dot = toTvX * toCellX + toTvY * toCellY;
-        const tvDist = Math.hypot(toTvX, toTvY) || 1;
-        const cellDist = Math.hypot(toCellX, toCellY) || 1;
-        const proj = dot / (tvDist * cellDist);
-
-        const shadowDirX = toTvX / tvDist;
-        const shadowDirY = toTvY / tvDist;
-        const t = Math.max(0, toCellX * shadowDirX + toCellY * shadowDirY);
         const rayX = lightX + shadowDirX * t;
         const rayY = lightY + shadowDirY * t;
         const perp = Math.hypot(cx - rayX, cy - rayY);
+        const past = t - tvDist;
+        const shadowWidth = 28 + past * 0.35;
+        if (perp > shadowWidth) continue;
 
-        const behind = t > tvDist * 0.7 && proj > 0.15;
-        const shadowWidth = 40 + (t - tvDist) * 0.25;
-        let shadow = 0;
-        if (behind && perp < shadowWidth) {
-          shadow = (1 - perp / shadowWidth) * Math.min(1, (t - tvDist) / 120);
-          shadow = Math.max(0, shadow);
-        }
+        let strength = (1 - perp / shadowWidth) * Math.min(1, past / 100);
+        strength = Math.max(0, strength);
+        if (strength < 0.06) continue;
 
-        let intensity = light * (1 - shadow * 0.92);
-        intensity = intensity * 0.85 + 0.02;
-
-        if (shadow > 0.08) {
-          intensity = Math.min(intensity, 0.15 + shadow * 0.55);
-        }
-
-        const idx = Math.floor(intensity * (ASCII_RAMP.length - 1));
-        const ch = ASCII_RAMP[Math.max(0, Math.min(ASCII_RAMP.length - 1, idx))];
-
-        if (ch === " ") continue;
-
-        const g = 140 + Math.floor(intensity * 100);
-        const a = 0.15 + intensity * 0.65;
-        ctx.fillStyle = `rgba(120, ${g}, 140, ${a})`;
+        const idx = Math.min(ASCII_RAMP.length - 1, Math.floor(strength * (ASCII_RAMP.length - 1)));
+        const ch = ASCII_RAMP[idx];
+        const alpha = 0.2 + strength * 0.75;
+        const g = 100 + Math.floor(strength * 120);
+        ctx.fillStyle = "rgba(90," + g + ",110," + alpha + ")";
         ctx.fillText(ch, cx, cy);
       }
     }
   }
 
   function updateScrollVisuals() {
-    state.scrollProgress += (targetScroll - state.scrollProgress) * 0.08;
+    state.scrollProgress += (targetScroll - state.scrollProgress) * 0.09;
     const p = state.scrollProgress;
+    if (scrollHint) scrollHint.classList.toggle("fade", p > 0.06);
 
-    if (scrollHint) {
-      scrollHint.classList.toggle("fade", p > 0.08);
+    if (!state.entered) {
+      const scale = 1 + p * 6.5;
+      const moveX = (0.5 * state.width - state.tvCenter.x) * p * 0.95;
+      const moveY = (0.5 * state.height - state.tvCenter.y) * p * 0.95;
+      const approachRot = p * -8;
+      tvStage.style.transform = "translate(" + moveX + "px," + moveY + "px) scale(" + scale + ")";
+      tvStage.style.opacity = String(1 - Math.max(0, p - 0.72) * 3.5);
+
+      if (p > 0.15) {
+        const baseRotX = (state.mouse.y - 0.5) * -36;
+        const baseRotY = (state.mouse.x - 0.28) * 14;
+        tv.style.transform = "rotateX(" + (baseRotX + approachRot) + "deg) rotateY(" + baseRotY + "deg)";
+      }
     }
 
-    if (p < 1) {
-      const scale = 1 + p * 4.5;
-      const moveX = (0.5 * state.width - state.tvCenter.x) * p * 0.85;
-      const moveY = (0.5 * state.height - state.tvCenter.y) * p * 0.85;
-      tvStage.style.transform = `translate(${moveX}px, ${moveY}px) scale(${scale})`;
-      tvStage.style.opacity = String(1 - Math.max(0, p - 0.75) * 4);
-    }
-
-    if (p >= 1 && !state.entered) {
-      enterInnerWorld();
-    }
-  }
-
-  function enterInnerWorld() {
-    state.entered = true;
-    outerWorld.classList.add("is-hidden");
-    innerWorld.classList.add("is-active");
-    document.body.style.cursor = "default";
+    if (p >= 1 && !state.entered) enterInnerWorld();
   }
 
   function frame() {
@@ -190,11 +163,21 @@
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("wheel", onWheel, { passive: false });
 
-    state.mousePx.x = state.width * 0.55;
-    state.mousePx.y = state.height * 0.45;
-    state.mouse.x = 0.55;
-    state.mouse.y = 0.45;
+    tv.addEventListener("click", function (e) {
+      e.preventDefault();
+      enterInnerWorld();
+    });
+    tv.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        enterInnerWorld();
+      }
+    });
 
+    state.mousePx.x = state.width * 0.62;
+    state.mousePx.y = state.height * 0.35;
+    state.mouse.x = 0.62;
+    state.mouse.y = 0.35;
     requestAnimationFrame(frame);
   }
 
