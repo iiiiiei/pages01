@@ -15,7 +15,7 @@
     scrollProgress: 0,
     width: 0,
     height: 0,
-    box: { x: 0, y: 0, w: 180, h: 160 },
+    box: { x: 0, y: 0, w: 160, h: 150 },
   };
 
   const ASCII = " .:-=+*#%@";
@@ -29,10 +29,10 @@
     state.height = window.innerHeight;
     canvas.width = state.width;
     canvas.height = state.height;
-    state.box.w = 180;
-    state.box.h = 160;
-    state.box.x = state.width * 0.16 - 10;
-    state.box.y = state.height - state.height * 0.22 - state.box.h + 20;
+    state.box.w = 160;
+    state.box.h = 150;
+    state.box.x = state.width * 0.16;
+    state.box.y = state.height - state.height * 0.20 - state.box.h + 10;
   }
 
   function onPointerMove(e) {
@@ -45,7 +45,7 @@
       const addX = (state.mouse.y - 0.5) * -6;
       const addY = (state.mouse.x - 0.35) * 6;
       mac.style.transform =
-        "rotateX(" + (42 + addX) + "deg) rotateY(" + (-32 + addY) + "deg)";
+        "rotateX(" + (-32 + addX) + "deg) rotateY(" + (38 + addY) + "deg)";
     }
   }
 
@@ -204,7 +204,7 @@
     } else if (p <= EXIT_AT) {
       outerWorld.classList.remove("is-hidden");
       innerWorld.classList.remove("is-active");
-      document.body.style.cursor = "crosshair";
+      document.body.style.cursor = "default";
     }
   }
 
