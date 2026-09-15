@@ -3,93 +3,117 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;color:#ccc;font
 body{cursor:default}
 .world{position:fixed;inset:0}
 
-#outer-world{z-index:2;background:#000;transition:opacity .5s ease,visibility .5s}
+#outer-world{z-index:2;background:#000;transition:opacity .55s ease,visibility .55s}
 #outer-world.is-hidden{opacity:0;visibility:hidden;pointer-events:none}
 #ascii-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;display:block}
 
 #mac-stage{
   position:absolute;
-  left:50%;
-  top:50%;
-  width:0;height:0;
+  left:18%;
+  bottom:18%;
+  width:160px;
+  height:220px;
   z-index:5;
-  perspective:1000px;
-  transform:translate(-42vw, 12vh);
+  perspective:900px;
+  perspective-origin:60% 20%;
 }
 
-.cube{
+.mac{
   position:relative;
   width:130px;
-  height:150px;
+  height:180px;
   transform-style:preserve-3d;
-  transform:rotateX(-28deg) rotateY(42deg);
+  transform:rotateX(28deg) rotateY(-32deg);
   transition:transform .1s ease-out;
+  will-change:transform;
 }
 
-.face{
+.mac-depth{
   position:absolute;
-  box-sizing:border-box;
-  backface-visibility:hidden;
+  right:-22px;top:6px;
+  width:22px;height:168px;
+  background:linear-gradient(90deg,#9a9a9a,#5a5a5a);
+  border-radius:0 10px 10px 0;
+  transform:skewY(-4deg);
+  box-shadow:4px 8px 20px rgba(0,0,0,.5);
 }
 
-.face.front{
-  width:130px;height:150px;
-  left:0;top:0;
-  transform:translateZ(55px);
-  background:#d6d6d6;
-  border-radius:10px;
-  display:flex;flex-direction:column;align-items:center;
-  box-shadow:inset 0 1px 0 #fff;
+.mac-shell{
+  position:relative;
+  width:130px;height:180px;
+  background:linear-gradient(160deg,#e8e8e8 0%,#c4c4c4 45%,#a8a8a8 100%);
+  border-radius:14px 14px 12px 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.55),
+    inset 0 -3px 6px rgba(0,0,0,.12),
+    0 12px 28px rgba(0,0,0,.55);
+  overflow:hidden;
+  z-index:2;
 }
-.bezel{
-  width:100px;margin-top:14px;padding:5px;
-  background:#333;border-radius:5px;
+
+.mac-handle{
+  height:10px;
+  margin:8px 18px 0;
+  background:linear-gradient(to bottom,#bbb,#888);
+  border-radius:4px;
+  box-shadow:inset 0 2px 3px rgba(0,0,0,.25);
 }
-.crt{
-  height:72px;background:#0a0a0a;border-radius:2px;
+
+.mac-crt-bezel{
+  margin:10px 14px 0;
+  padding:7px;
+  background:#2c2c2c;
+  border-radius:6px;
+  box-shadow:
+    inset 0 0 0 1px #1a1a1a,
+    0 1px 0 rgba(255,255,255,.2);
+}
+.mac-crt{
+  height:78px;
+  background:#0a0a0a;
+  border-radius:3px;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:inset 0 0 16px #000;
-  font-size:8px;letter-spacing:.25em;color:#555;
+  box-shadow:inset 0 0 24px #000;
+  position:relative;
 }
-.floppy{
-  width:38px;height:5px;margin-top:14px;
-  background:#1a1a1a;border:1px solid #888;
-}
-.name{margin-top:12px;font-size:7px;letter-spacing:.12em;color:#666}
-
-.face.back{
-  width:130px;height:150px;left:0;top:0;
-  transform:rotateY(180deg) translateZ(55px);
-  background:#6e6e6e;border-radius:10px;
+.mac-crt-text{
+  font-size:8px;letter-spacing:.28em;color:#4a4a4a;
+  animation:blink 2.2s step-end infinite;
 }
 
-.face.right{
-  width:110px;height:150px;
-  left:10px;
-  top:0;
-  transform:rotateY(90deg) translateZ(65px);
-  background:#8c8c8c;border-radius:6px;
+.mac-floppy{
+  width:48px;height:6px;
+  margin:16px auto 0;
+  background:#111;
+  border-radius:1px;
+  box-shadow:
+    inset 0 1px 2px #000,
+    0 0 0 1px #777,
+    0 1px 0 rgba(255,255,255,.15);
 }
 
-.face.left{
-  width:110px;height:150px;
-  left:10px;top:0;
-  transform:rotateY(-90deg) translateZ(65px);
-  background:#a0a0a0;border-radius:6px;
+.mac-logo-row{
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  margin-top:14px;
+  font-size:8px;color:#5a5a5a;letter-spacing:.06em;
 }
+.apple-mark{font-size:11px;line-height:1}
 
-.face.top{
-  width:130px;height:110px;
-  left:0;top:20px;
-  transform:rotateX(90deg) translateZ(75px);
-  background:#ececec;border-radius:8px 8px 0 0;
+.mac-top{
+  position:absolute;
+  left:4px;top:-18px;
+  width:122px;height:28px;
+  background:linear-gradient(to bottom,#f0f0f0,#c8c8c8);
+  border-radius:10px 10px 2px 2px;
+  transform:rotateX(70deg);
+  transform-origin:bottom center;
+  box-shadow:0 -2px 8px rgba(0,0,0,.2);
+  z-index:1;
 }
-
-.face.bottom{
-  width:130px;height:110px;
-  left:0;top:20px;
-  transform:rotateX(-90deg) translateZ(75px);
-  background:#4a4a4a;border-radius:0 0 8px 8px;
+.mac-handle-cut{
+  width:56px;height:8px;margin:6px auto 0;
+  background:#888;border-radius:3px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.35);
 }
 
 #scroll-hint{
@@ -98,8 +122,9 @@ body{cursor:default}
   color:rgba(160,160,160,.35);pointer-events:none;transition:opacity .3s;
 }
 #scroll-hint.fade{opacity:0}
+@keyframes blink{0%,100%{opacity:.45}50%{opacity:.08}}
 
-#inner-world{z-index:1;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility .45s}
+#inner-world{z-index:1;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .5s ease,visibility .5s}
 #inner-world.is-active{opacity:1;visibility:visible;pointer-events:auto}
 .crt-frame{position:absolute;inset:0;background:#000;overflow:hidden}
 .crt-fisheye{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,#141414 0%,#060606 55%,#000 100%)}
