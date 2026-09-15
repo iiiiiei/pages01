@@ -15,7 +15,7 @@
     scrollProgress: 0,
     width: 0,
     height: 0,
-    box: { x: 0, y: 0, w: 120, h: 140 },
+    box: { x: 0, y: 0, w: 180, h: 160 },
   };
 
   const ASCII = " .:-=+*#%@";
@@ -29,10 +29,10 @@
     state.height = window.innerHeight;
     canvas.width = state.width;
     canvas.height = state.height;
-    state.box.w = 120;
-    state.box.h = 140;
-    state.box.x = state.width * 0.14;
-    state.box.y = state.height - state.height * 0.18 - state.box.h;
+    state.box.w = 180;
+    state.box.h = 160;
+    state.box.x = state.width * 0.16 - 10;
+    state.box.y = state.height - state.height * 0.22 - state.box.h + 20;
   }
 
   function onPointerMove(e) {
@@ -42,10 +42,10 @@
     state.mouse.y = state.height ? state.mousePx.y / state.height : 0.5;
 
     if (state.scrollProgress < 0.4) {
-      const addX = (state.mouse.y - 0.5) * -8;
-      const addY = (state.mouse.x - 0.35) * 8;
+      const addX = (state.mouse.y - 0.5) * -6;
+      const addY = (state.mouse.x - 0.35) * 6;
       mac.style.transform =
-        "rotateX(" + (18 + addX) + "deg) rotateY(" + (-38 + addY) + "deg) rotateZ(2deg)";
+        "rotateX(" + (42 + addX) + "deg) rotateY(" + (-32 + addY) + "deg)";
     }
   }
 
@@ -63,26 +63,23 @@
     function cross(o, a, b) {
       return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
     }
-    const lower = [];
+    const lower = [], upper = [];
     for (let i = 0; i < p.length; i++) {
       while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p[i]) <= 0) lower.pop();
       lower.push(p[i]);
     }
-    const upper = [];
     for (let i = p.length - 1; i >= 0; i--) {
       while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p[i]) <= 0) upper.pop();
       upper.push(p[i]);
     }
-    lower.pop();
-    upper.pop();
+    lower.pop(); upper.pop();
     return lower.concat(upper);
   }
 
   function pointInPoly(px, py, poly) {
     let inside = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const xi = poly[i].x, yi = poly[i].y;
-      const xj = poly[j].x, yj = poly[j].y;
+      const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
       if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi))
         inside = !inside;
     }
@@ -96,7 +93,7 @@
       const abx = b.x - a.x, aby = b.y - a.y;
       const apx = px - a.x, apy = py - a.y;
       const ab2 = abx * abx + aby * aby || 1;
-      let t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+      const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
       const d = Math.hypot(px - (a.x + abx * t), py - (a.y + aby * t));
       if (d < minD) minD = d;
     }
@@ -105,49 +102,46 @@
 
   function shadowPolygon() {
     const b = state.box;
-    const feetY = b.y + b.h;
-
-    const base = [
-      { x: b.x - 4, y: feetY - 2 },
-      { x: b.x + b.w + 18, y: feetY - 2 },
-      { x: b.x + b.w + 14, y: feetY + 6 },
-      { x: b.x - 2, y: feetY + 6 },
+    const foot = [
+      { x: b.x + 10, y: b.y + b.h - 8 },
+      { x: b.x + b.w - 20, y: b.y + b.h - 12 },
+      { x: b.x + b.w - 5, y: b.y + b.h + 10 },
+      { x: b.x + 5, y: b.y + b.h + 14 },
     ];
 
+    const deskY = b.y + b.h + 4;
     let lx = state.mousePx.x;
     let ly = state.mousePx.y;
-    const lightH = Math.max(40, feetY - ly);
-    if (ly >= feetY - 10) {
-      ly = feetY - 120;
+    let lightH = deskY - ly;
+    if (lightH < 60) {
+      lightH = 160;
+      ly = deskY - lightH;
     }
 
-    const topY = b.y + 8;
-    const topCorners = [
-      { x: b.x + 4, y: topY },
-      { x: b.x + b.w - 4, y: topY },
-      { x: b.x + b.w + 10, y: topY + 6 },
-      { x: b.x + 8, y: topY + 4 },
-    ];
+    const objH = 90;
+    const stretch = Math.min(2.8, objH / lightH * 2.2);
 
-    const objH = feetY - topY;
-    const projected = [];
-    for (let i = 0; i < topCorners.length; i++) {
-      const t = topCorners[i];
-      const scale = objH / Math.max(24, lightH);
-      const dx = t.x - lx;
-      projected.push({
-        x: t.x + dx * scale * 1.8,
-        y: feetY + 4 + Math.abs(dx) * scale * 0.15,
-      });
-    }
+    const fcx = (foot[0].x + foot[1].x + foot[2].x + foot[3].x) / 4;
+    const fcy = (foot[0].y + foot[1].y + foot[2].y + foot[3].y) / 4;
+    const dirX = fcx - lx;
+    const dirY = fcy - ly;
+    const len = Math.hypot(dirX, dirY) || 1;
+    const nx = dirX / len;
+    const ny = Math.max(0.15, dirY / len);
 
-    return convexHull(base.concat(projected));
+    const far = foot.map(function (p) {
+      return {
+        x: p.x + nx * 70 * stretch,
+        y: p.y + ny * 50 * stretch + 8,
+      };
+    });
+
+    return convexHull(foot.concat(far));
   }
 
   function drawAsciiFrame() {
     const w = state.width, h = state.height;
     if (w < 10 || h < 10) return;
-
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
 
@@ -157,7 +151,7 @@
     const hull = shadowPolygon();
     if (!hull || hull.length < 3) return;
 
-    const SOFT = 14;
+    const SOFT = 16;
     const cols = Math.ceil(w / CELL);
     const rows = Math.ceil(h / CELL);
     ctx.font = CELL + 'px "Courier New", monospace';
@@ -165,30 +159,24 @@
     ctx.textBaseline = "middle";
 
     const b = state.box;
-    const skip = {
-      x0: b.x - 8,
-      y0: b.y - 8,
-      x1: b.x + b.w + 24,
-      y1: b.y + b.h + 12,
-    };
+    const sx0 = b.x, sy0 = b.y, sx1 = b.x + b.w, sy1 = b.y + b.h - 5;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const cx = col * CELL + CELL * 0.5;
         const cy = row * CELL + CELL * 0.5;
-
-        if (cy < b.y + b.h * 0.55) continue;
-        if (cx > skip.x0 && cx < skip.x1 && cy > skip.y0 && cy < skip.y1) continue;
+        if (cy < b.y + b.h * 0.6) continue;
+        if (cx > sx0 && cx < sx1 && cy > sy0 && cy < sy1) continue;
         if (!pointInPoly(cx, cy, hull)) continue;
 
         const edge = distToEdge(cx, cy, hull);
         let strength = edge < SOFT ? edge / SOFT : 1;
         strength *= fade;
-        if (strength < 0.07) continue;
+        if (strength < 0.06) continue;
 
         const idx = Math.min(ASCII.length - 1, Math.floor(strength * (ASCII.length - 1)));
-        const g = Math.floor(25 + strength * 200);
-        const a = 0.2 + strength * 0.7;
+        const g = Math.floor(20 + strength * 190);
+        const a = 0.18 + strength * 0.72;
         ctx.fillStyle = "rgba(" + g + "," + g + "," + g + "," + a + ")";
         ctx.fillText(ASCII[idx], cx, cy);
       }
@@ -204,9 +192,9 @@
     const cx = b.x + b.w * 0.5;
     const cy = b.y + b.h * 0.35;
     const scale = 1 + p * 9;
-    const moveX = (0.5 * state.width - cx) * p;
-    const moveY = (0.5 * state.height - cy) * p;
-    macStage.style.transform = "translate(" + moveX + "px," + moveY + "px) scale(" + scale + ")";
+    macStage.style.transform =
+      "translate(" + ((0.5 * state.width - cx) * p) + "px," +
+      ((0.5 * state.height - cy) * p) + "px) scale(" + scale + ")";
     macStage.style.opacity = String(1 - Math.max(0, p - 0.65) * 3);
 
     if (p >= ENTER_AT) {
@@ -231,8 +219,8 @@
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("wheel", onWheel, { passive: false });
-    state.mousePx.x = state.width * 0.72;
-    state.mousePx.y = state.height * 0.25;
+    state.mousePx.x = state.width * 0.55;
+    state.mousePx.y = state.height * 0.2;
     requestAnimationFrame(frame);
   }
 
