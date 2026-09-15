@@ -9,26 +9,22 @@
 <body>
   <section id="outer-world" class="world">
     <canvas id="ascii-canvas"></canvas>
-
     <div id="mac-stage">
       <div id="mac" class="mac">
-        <div class="mac-3d">
-          <div class="mac-face mac-top"></div>
-          <div class="mac-face mac-right"></div>
-          <div class="mac-face mac-front">
+        <div class="mac-body">
+          <div class="mac-screen-wrap">
             <div class="mac-screen">
               <div class="mac-scan"></div>
-              <div class="mac-grain"></div>
               <span class="mac-hint">ENTER</span>
             </div>
-            <div class="mac-slot"></div>
-            <div class="mac-badge">macintosh</div>
           </div>
-          <div class="mac-face mac-bottom"></div>
+          <div class="mac-chin">
+            <div class="mac-floppy"></div>
+            <div class="mac-logo">Macintosh</div>
+          </div>
         </div>
       </div>
     </div>
-
     <div id="scroll-hint">scroll to enter · scroll up to exit</div>
   </section>
 
@@ -46,7 +42,6 @@
       </div>
     </div>
   </section>
-
   <script src="main.js"></script>
 </body>
 </html>
