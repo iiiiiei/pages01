@@ -9,22 +9,29 @@
 <body>
   <section id="outer-world" class="world">
     <canvas id="ascii-canvas"></canvas>
+
     <div id="mac-stage">
-      <div id="mac" class="cube">
-        <div class="face front">
-          <div class="bezel">
-            <div class="crt"><span>ENTER</span></div>
+      <div id="mac" class="mac">
+        <div class="mac-depth"></div>
+        <div class="mac-shell">
+          <div class="mac-handle"></div>
+          <div class="mac-crt-bezel">
+            <div class="mac-crt" id="mac-crt">
+              <span class="mac-crt-text">ENTER</span>
+            </div>
           </div>
-          <div class="floppy"></div>
-          <div class="name">Macintosh</div>
+          <div class="mac-floppy"></div>
+          <div class="mac-logo-row">
+            <span class="apple-mark"></span>
+            <span class="mac-word">Macintosh</span>
+          </div>
         </div>
-        <div class="face back"></div>
-        <div class="face right"></div>
-        <div class="face left"></div>
-        <div class="face top"></div>
-        <div class="face bottom"></div>
+        <div class="mac-top">
+          <div class="mac-handle-cut"></div>
+        </div>
       </div>
     </div>
+
     <div id="scroll-hint">scroll to enter · scroll up to exit</div>
   </section>
 
