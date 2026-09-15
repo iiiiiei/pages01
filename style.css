@@ -4,7 +4,7 @@ html, body {
   background: #000; color: #ccc;
   font-family: "Courier New", Courier, monospace;
 }
-body { cursor: crosshair; }
+body { cursor: default; }
 .world { position: fixed; inset: 0; }
 
 #outer-world {
@@ -20,113 +20,108 @@ body { cursor: crosshair; }
 
 #mac-stage {
   position: absolute;
-  left: 18%;
-  bottom: 24%;
-  width: 200px;
-  height: 200px;
+  left: 16%;
+  bottom: 20%;
+  width: 220px;
+  height: 220px;
   z-index: 5;
-  perspective: 800px;
-  perspective-origin: 50% 40%;
+  perspective: 900px;
+  perspective-origin: 50% 30%;
 }
 
-.mac {
+.cube {
   position: relative;
   width: 140px;
   height: 160px;
-  margin: 0 auto;
+  margin: 40px auto 0;
   transform-style: preserve-3d;
-  transform: rotateX(38deg) rotateY(-30deg);
+  transform: rotateX(-32deg) rotateY(38deg);
   transition: transform 0.1s ease-out;
 }
 
-.side {
+.face {
   position: absolute;
   left: 0; top: 0;
+  backface-visibility: hidden;
 }
 
-.front {
-  width: 140px;
-  height: 160px;
-  transform: translateZ(40px);
-  background: #c8c8c8;
-  border-radius: 10px;
-  box-shadow:
-    inset 0 2px 0 #eee,
-    inset 0 -2px 4px rgba(0,0,0,0.2);
+.face.front {
+  width: 140px; height: 160px;
+  transform: translateZ(45px);
+  background: #d0d0d0;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-
 .screen-frame {
-  margin: 14px 14px 0;
-  padding: 5px;
-  background: #333;
-  border-radius: 5px;
+  width: 112px; margin-top: 14px; padding: 5px;
+  background: #2a2a2a; border-radius: 4px;
 }
 .screen-glass {
-  height: 82px;
-  background: #111;
-  border-radius: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: inset 0 0 20px #000;
+  height: 78px; background: #0e0e0e; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 18px #000;
 }
 .hint {
-  font-size: 9px;
-  letter-spacing: 0.3em;
-  color: #666;
+  font-size: 8px; letter-spacing: 0.28em; color: #555;
   animation: blink 2.2s step-end infinite;
 }
 .slot {
-  width: 44px;
-  height: 5px;
-  margin: 16px auto 0;
-  background: #222;
-  border: 1px solid #888;
+  width: 40px; height: 5px; margin-top: 16px;
+  background: #1a1a1a; border: 1px solid #777;
 }
 .label {
-  text-align: center;
-  margin-top: 14px;
-  font-size: 8px;
-  letter-spacing: 0.12em;
-  color: #555;
+  margin-top: 12px; font-size: 7px;
+  letter-spacing: 0.14em; color: #666;
 }
 
-.top {
-  width: 140px;
-  height: 80px;
-  background: #e4e4e4;
-  transform: rotateX(90deg) translateZ(40px);
-  transform-origin: center top;
-  border-radius: 8px 8px 0 0;
+.face.back {
+  width: 140px; height: 160px;
+  transform: rotateY(180deg) translateZ(45px);
+  background: #6a6a6a;
+  border-radius: 8px;
 }
 
-.right {
-  width: 80px;
-  height: 160px;
-  left: 140px;
-  background: #7a7a7a;
-  transform: rotateY(90deg);
-  transform-origin: left center;
-  border-radius: 0 8px 8px 0;
+.face.right {
+  width: 90px; height: 160px;
+  transform: rotateY(90deg) translateZ(95px);
+  left: 25px;
+  background: #8a8a8a;
+  border-radius: 4px;
+}
+
+.face.left {
+  width: 90px; height: 160px;
+  transform: rotateY(-90deg) translateZ(45px);
+  left: 25px;
+  background: #9a9a9a;
+  border-radius: 4px;
+}
+
+.face.top {
+  width: 140px; height: 90px;
+  transform: rotateX(90deg) translateZ(45px);
+  background: #e8e8e8;
+  border-radius: 6px 6px 0 0;
+}
+
+.face.bottom {
+  width: 140px; height: 90px;
+  transform: rotateX(-90deg) translateZ(115px);
+  background: #555;
+  border-radius: 0 0 6px 6px;
 }
 
 #scroll-hint {
-  position: absolute;
-  bottom: 16px; left: 50%;
+  position: absolute; bottom: 16px; left: 50%;
   transform: translateX(-50%);
-  z-index: 6;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: rgba(160,160,160,0.35);
-  pointer-events: none;
+  z-index: 6; font-size: 10px; letter-spacing: 0.12em;
+  color: rgba(160,160,160,0.35); pointer-events: none;
   transition: opacity 0.3s;
 }
 #scroll-hint.fade { opacity: 0; }
-
-@keyframes blink {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.1; }
-}
+@keyframes blink { 0%,100%{opacity:0.5} 50%{opacity:0.1} }
 
 #inner-world {
   z-index: 1; opacity: 0; visibility: hidden; pointer-events: none;
@@ -161,8 +156,8 @@ body { cursor: crosshair; }
 .crt-sub { margin-top: 1rem; font-size: 0.7rem; letter-spacing: 0.24em; color: rgba(190,190,190,0.38); }
 .crt-back { margin-top: 2.2rem; font-size: 0.62rem; letter-spacing: 0.18em; color: rgba(150,150,150,0.28); }
 @keyframes jitter {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(-1px, 0); }
-  50% { transform: translate(1px, 0.4px); }
-  75% { transform: translate(0, -0.4px); }
+  0%,100%{transform:translate(0,0)}
+  25%{transform:translate(-1px,0)}
+  50%{transform:translate(1px,0.4px)}
+  75%{transform:translate(0,-0.4px)}
 }
