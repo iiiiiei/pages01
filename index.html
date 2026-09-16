@@ -1,54 +1,604 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="zh">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>iiiiiei — Phase 1</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IIIIIEI — Pipeline Study (inspired by shader.se)</title>
+<style>
+  :root { --green: #39ff88; --amber: #ffb000; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #000; }
+  body { font-family: "Courier New", ui-monospace, monospace; color: var(--green); }
+  #scroll-space { height: 600vh; width: 1px; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .ui { position: fixed; z-index: 10; pointer-events: none; user-select: none; }
+
+  nav.ui {
+    top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
+    padding: 18px 22px; font-size: 12px; letter-spacing: 0.18em;
+    mix-blend-mode: difference; color: #fff;
+  }
+  nav .links { display: flex; gap: 18px; }
+
+  #sec {
+    left: 22px; bottom: 20px; font-size: 11px; letter-spacing: 0.22em;
+    mix-blend-mode: difference; color: #fff;
+  }
+  #sec b { font-weight: 700; }
+
+  #hint {
+    left: 50%; bottom: 26px; transform: translateX(-50%);
+    font-size: 11px; letter-spacing: 0.3em; color: var(--amber);
+    animation: hintPulse 1.6s ease-in-out infinite;
+    transition: opacity .4s;
+  }
+  @keyframes hintPulse { 50% { opacity: .25; } }
+
+  #credit {
+    right: 22px; bottom: 20px; font-size: 10px; letter-spacing: 0.08em;
+    color: #666; max-width: 46vw; text-align: right; line-height: 1.5;
+  }
+  #loader {
+    position: fixed; inset: 0; z-index: 99; background: #000; color: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; letter-spacing: 0.3em; transition: opacity .6s;
+  }
+  @media (max-width: 640px) { #credit { display: none; } nav .links { display: none; } }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js" } }
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/lenis@1.3.4/dist/lenis.min.js"></script>
 </head>
 <body>
-  <section id="outer-world" class="world">
-    <canvas id="ascii-canvas"></canvas>
+  <div id="scroll-space"></div>
+  <canvas id="gl"></canvas>
 
-    <div id="mac-stage">
-      <div id="mac" class="mac">
-        <div class="mac-depth"></div>
-        <div class="mac-shell">
-          <div class="mac-handle"></div>
-          <div class="mac-crt-bezel">
-            <div class="mac-crt" id="mac-crt">
-              <span class="mac-crt-text">ENTER</span>
-            </div>
-          </div>
-          <div class="mac-floppy"></div>
-          <div class="mac-logo-row">
-            <span class="apple-mark"></span>
-            <span class="mac-word">Macintosh</span>
-          </div>
-        </div>
-        <div class="mac-top">
-          <div class="mac-handle-cut"></div>
-        </div>
-      </div>
-    </div>
+  <nav class="ui">
+    <span>IIIIIEI · PIPELINE STUDY</span>
+    <span class="links"><span>01 SIGNAL</span><span>02 INSIDE</span><span>03 END</span></span>
+  </nav>
+  <div id="sec" class="ui">SECTION <b id="secNum">01</b> / 03 — <span id="secName">SIGNAL</span></div>
+  <div id="hint" class="ui">SCROLL ▼</div>
+  <div id="credit" class="ui">a technical study inspired by shader.se.<br>original code &amp; copy · not affiliated</div>
+  <div id="loader">SIGNAL SYNC…</div>
+  <script>
+    // 开发用错误面板：任何脚本错误直接亮在页面上
+    function showErr(msg) {
+      let d = document.getElementById('errpanel');
+      if (!d) {
+        d = document.createElement('div');
+        d.id = 'errpanel';
+        d.style.cssText = 'position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:999;background:#2a0000;color:#ff8f8f;font:13px monospace;padding:14px 18px;max-width:85vw;max-height:70vh;overflow:auto;white-space:pre-wrap;border:1px solid #a33';
+        document.body.appendChild(d);
+      }
+      d.textContent += msg + '\n';
+    }
+    window.showErr = showErr;
+    addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
+    addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
+  </script>
 
-    <div id="scroll-hint">scroll to enter · scroll up to exit</div>
-  </section>
+<script type="module">
+import * as THREE from 'three';
 
-  <section id="inner-world" class="world">
-    <div class="crt-frame">
-      <div class="crt-fisheye">
-        <div class="crt-scanlines"></div>
-        <div class="crt-vignette"></div>
-        <div class="crt-noise"></div>
-        <div class="crt-content">
-          <h1 class="crt-text">Hello World</h1>
-          <p class="crt-sub">life is art’s whisper</p>
-          <p class="crt-back">scroll up to leave</p>
-        </div>
-      </div>
-    </div>
-  </section>
-  <script src="main.js"></script>
+/* ============================================================
+   Pipeline study — 思想来自 shader.se 的公开拆解（见 README.md）：
+   1. 页面分段配置 + 滚动进度驱动
+   2. 选择性渲染：范围外场景零渲染
+   3. FBO 场景链：倒序渲染，next 纹理逐级下传
+   4. 视锥匹配穿屏（fitCameraToScreen）
+   5. 屏幕空间采样揭示（gl_FragCoord）
+   6. 最终 compose：grain / 色差 / 扫描线 / vignette / 穿幕闪断
+   ============================================================ */
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+// 诊断：着色器编译错误亮到页面（three 默认只走 console）
+renderer.debug.onShaderError = (gl, program, vs, fs) => {
+  try { window.showErr && showErr('SHADER ERR: ' + String(gl.getShaderInfoLog(fs)).slice(0, 300)); }
+  catch { window.showErr && showErr('SHADER ERR: (no log)'); }
+};
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DPR = () => Math.min(devicePixelRatio || 1, REDUCED ? 1 : 2);
+
+/* ---------------- 滚动 ---------------- */
+let progress = 0;
+const lenis = new Lenis({ lerp: 0.09, smoothWheel: true });
+lenis.on('scroll', (e) => { progress = clamp(e.scroll / Math.max(1, e.limit), 0, 1); });
+(function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(0);
+
+/* ---------------- 鼠标视差 ---------------- */
+const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
+addEventListener('pointermove', (e) => {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = (e.clientY / innerHeight) * 2 - 1;
+});
+
+/* ---------------- 共享 uniform ---------------- */
+const shared = {
+  uTime: { value: 0 },
+  uRes: { value: new THREE.Vector2(1, 1) },
+};
+
+/* ---------------- 程序化纹理工厂 ---------------- */
+function makeCanvasTexture(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const repaint = (...args) => { draw(c.getContext('2d'), c, ...args); tex.needsUpdate = true; };
+  repaint();
+  return { tex, repaint };
+}
+
+/* 开机自检屏（琥珀单色终端） */
+const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
+  ctx.fillStyle = '#030200'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#ffb000'; ctx.font = 'bold 44px "Courier New", monospace';
+  ctx.fillText('IIIIIEI SYSTEMS', 48, 96);
+  ctx.font = '28px "Courier New", monospace'; ctx.fillStyle = '#b97a00';
+  const lines = [
+    'BIOS v1.0  (C) 2026 IIIIIEI',
+    '',
+    'MEM CHECK ......... 640K OK',
+    'SIGNAL LOCK ....... OK',
+    'NEXT SCENE ........ STANDBY',
+    '',
+    '> LOADING CRT-TUNNEL' + (blink ? ' ▮' : '  '),
+  ];
+  lines.forEach((s, i) => ctx.fillText(s, 48, 180 + i * 46));
+});
+if (!REDUCED) setInterval(() => boot.repaint(Math.floor(Date.now() / 500) % 2 === 0), 500);
+
+/* 学习卡片（终端绿） */
+const STUDIES = [
+  ['STUDY 01 · SELECTIVE RENDER', 'out-of-range scenes cost zero draw calls'],
+  ['STUDY 02 · FBO CHAIN', 'scenes render in reverse, each feeds the next'],
+  ['STUDY 03 · FRUSTUM FIT', 'camera flies to the exact screen distance'],
+  ['STUDY 04 · SCREEN-SPACE', 'transitions sample by fragment coordinate'],
+  ['STUDY 05 · RENDER OFFSET', 'the next frame is ready before you arrive'],
+  ['STUDY 06 · ONE SCROLL', 'scroll position drives every uniform'],
+];
+const cardTextures = STUDIES.map(([title, sub]) => makeCanvasTexture(512, 320, (ctx, c) => {
+  ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = '#1d7a48'; ctx.lineWidth = 3; ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
+  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "Courier New", monospace';
+  ctx.fillText(title, 34, 70);
+  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "Courier New", monospace';
+  sub.match(/.{1,30}/g)?.forEach((s, i) => ctx.fillText(s, 34, 130 + i * 36));
+  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "Courier New", monospace';
+  ctx.fillText('iiiiiei // study of a public pipeline', 34, c.height - 36);
+}));
+
+/* 终章大字 */
+const endTitle = makeCanvasTexture(1024, 512, (ctx, c) => {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 72px "Courier New", monospace';
+  ctx.fillText('END OF TRANSMISSION', c.width / 2, 210);
+  ctx.fillStyle = '#39ff88'; ctx.font = '30px "Courier New", monospace';
+  ctx.fillText('this pipeline now belongs to iiiiiei.com', c.width / 2, 300);
+  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "Courier New", monospace';
+  ctx.fillText('thanks for scrolling through the machine', c.width / 2, 370);
+});
+
+/* 通用 ShaderMaterial 快捷方式（自带全屏 varying vUv 的默认顶点着色器） */
+const DEFAULT_VERT = /* glsl */`
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const mat = (frag, uniforms, opts = {}) => new THREE.ShaderMaterial({
+  uniforms: { ...shared, ...uniforms }, vertexShader: DEFAULT_VERT, fragmentShader: frag, ...opts,
+});
+
+/* ============================================================
+   SCENE A · HERO — 80s 桌面上的 CRT，滚动推镜头穿进屏幕
+   ============================================================ */
+class HeroScene {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0908);
+    this.scene.fog = new THREE.FogExp2(0x0a0908, 0.055);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+    this.activeRange = [-0.05, 0.60]; // 渲染偏移：穿幕前提前待命
+
+    const beige = new THREE.MeshStandardMaterial({ color: 0xcfc3a5, roughness: 0.65, metalness: 0.05 });
+    const beigeDark = new THREE.MeshStandardMaterial({ color: 0xa89878, roughness: 0.7 });
+
+    // 桌子
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(9, 0.35, 4.4), beigeDark);
+    desk.position.y = -0.18; this.scene.add(desk);
+    [[-3.8], [3.8]].forEach(([x]) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.5, 3, 3.6), beigeDark);
+      leg.position.set(x, -1.85, 0); this.scene.add(leg);
+    });
+    // 地面
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshStandardMaterial({ color: 0x14100c, roughness: 1 }));
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -3.4; this.scene.add(floor);
+
+    // CRT 显示器：壳 + 屏幕 + 底座
+    const crt = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.95, 2.1), beige);
+    shell.position.y = 1.6; crt.add(shell);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.22, 1.5), beigeDark);
+    base.position.y = 0.5; crt.add(base);
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.5, 16), beigeDark);
+    pedestal.position.y = 0.25; crt.add(pedestal);
+    // 前面板装饰条 + 商标
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0xb4a583, roughness: 0.6 }));
+    strip.position.set(0, 0.72, 1.055); crt.add(strip);
+    const logo = makeCanvasTexture(256, 64, (ctx, c) => {
+      ctx.fillStyle = '#b4a583'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#3a3327'; ctx.font = 'bold 34px "Courier New", monospace';
+      ctx.textAlign = 'center'; ctx.fillText('IIIIIEI', c.width / 2, 44);
+    });
+    const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.125),
+      new THREE.MeshBasicMaterial({ map: logo.tex }));
+    logoMesh.position.set(0, 0.72, 1.058); crt.add(logoMesh);
+
+    // 屏幕（次元门）
+    this.screenMat = mat(/* glsl */`
+      uniform sampler2D uBoot; uniform sampler2D uNext;
+      uniform float uMix, uTime, uPower;
+      varying vec2 vUv;
+      vec2 barrel(vec2 uv) {
+        vec2 c = uv * 2.0 - 1.0;
+        c *= 1.0 + 0.11 * dot(c, c);
+        return c * 0.5 + 0.5;
+      }
+      void main() {
+        vec2 uv = barrel(vUv);
+        vec3 boot = texture2D(uBoot, uv).rgb;
+        vec3 next = texture2D(uNext, uv).rgb;
+        vec3 col = mix(boot, next, uMix);
+        // 扫描线 + 微闪烁 + 边角暗影（CRT 质感三件套）
+        float scan = 0.82 + 0.18 * sin(uv.y * 420.0);
+        float flick = 0.97 + 0.03 * sin(uTime * 31.0);
+        vec2 d = uv - 0.5;
+        float vig = smoothstep(0.85, 0.35, length(d));
+        gl_FragColor = vec4(col * scan * flick * vig * uPower, 1.0);
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      }`, {
+      uBoot: { value: boot.tex }, uNext: { value: null }, uMix: { value: 0 }, uPower: { value: 1 },
+    });
+    this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 1.4), this.screenMat);
+    this.screen.position.set(0, 1.72, 1.06); crt.add(this.screen);
+    crt.position.set(0, 0.15, -0.3);
+    this.scene.add(crt);
+
+    // 键盘 + 一叠"报表"（80s 办公室静物，全部几何体程序化）
+    const kbd = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 0.6), beige);
+    kbd.position.set(0.1, 0.03, 1.55); kbd.rotation.x = -0.08; this.scene.add(kbd);
+    for (let i = 0; i < 3; i++) {
+      const paper = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.03, 1.1),
+        new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.9 }));
+      paper.position.set(-2.4, 0.015 + i * 0.032, 1.2 + i * 0.05);
+      paper.rotation.y = -0.3 + i * 0.12; this.scene.add(paper);
+    }
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.12, 0.3, 20), beigeDark);
+    mug.position.set(2.1, 0.15, 1.4); this.scene.add(mug);
+
+    // 灯光：暖主光 + 冷补光 + 屏幕溢光
+    this.scene.add(new THREE.AmbientLight(0x6b5c48, 2.2));
+    const key = new THREE.SpotLight(0xffd9a0, 140, 40, 0.7, 0.5);
+    key.position.set(4, 6, 5); key.target = crt; this.scene.add(key);
+    const rim = new THREE.PointLight(0x5a8f6e, 8, 18);
+    rim.position.set(-3, 3, 4); this.scene.add(rim);
+
+    // 相机机位
+    this.camStart = new THREE.Vector3(3.4, 2.6, 5.2);
+    this.camLookStart = new THREE.Vector3(0, 1.1, 0);
+  }
+
+  /* 视锥匹配：算出恰好铺满屏幕平面的相机位置（原站 fitCameraToScreen 思想） */
+  fitCameraToScreen() {
+    this.screen.updateWorldMatrix(true, false);
+    const center = new THREE.Vector3().setFromMatrixPosition(this.screen.matrixWorld);
+    const normal = new THREE.Vector3(0, 0, 1)
+      .applyQuaternion(this.screen.getWorldQuaternion(new THREE.Quaternion())).normalize();
+    const fov = THREE.MathUtils.degToRad(this.camera.fov);
+    const h = 1.4, w = 1.85; // 屏幕平面的世界尺寸
+    const dist = Math.max(
+      (h / 2) / Math.tan(fov / 2),
+      (w / 2) / (Math.tan(fov / 2) * this.camera.aspect),
+    ) * 0.92; // 乘 0.92：留一点壳边防穿帮（原站同款保险）
+    return { pos: center.clone().add(normal.multiplyScalar(dist)), lookAt: center };
+  }
+
+  render(state, nextTexture) {
+    const p = state.progress, t = state.time;
+    this.screenMat.uniforms.uNext.value = nextTexture;
+    this.screenMat.uniforms.uMix.value = smoothstep(0.10, 0.36, p);
+    this.screenMat.uniforms.uTime.value = t;
+
+    const fly = smoothstep(0.02, 0.44, p);
+    const fit = this.fitCameraToScreen();
+    const breath = REDUCED ? 0 : Math.sin(t * 0.8) * 0.04 * (1 - fly);
+    this.camera.position.lerpVectors(this.camStart, fit.pos, fly);
+    this.camera.position.y += breath;
+    this.camera.position.x += mouse.sx * 0.22 * (1 - fly);
+    this.camera.position.y += -mouse.sy * 0.12 * (1 - fly);
+    this.camera.lookAt(new THREE.Vector3().lerpVectors(this.camLookStart, fit.lookAt, fly));
+    if (fly > 0.999) { this.camera.position.copy(fit.pos); this.camera.lookAt(fit.lookAt); }
+
+    renderer.setRenderTarget(this.fbo);
+    renderer.render(this.scene, this.camera);
+    renderer.setRenderTarget(null);
+    return this.fbo.texture;
+  }
+}
+
+/* ============================================================
+   SCENE B · INSIDE — 屏幕内的终端次元 + 噪声揭示层
+   ============================================================ */
+class InsideScene {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x010604);
+    this.scene.fog = new THREE.FogExp2(0x010604, 0.052);
+    this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 80);
+    this.activeRange = [0.36, 1.05];
+    this.scene.add(this.camera); // 揭示层挂在相机上，屏幕空间采样
+
+    // 发光网格地面
+    const grid = new THREE.Mesh(new THREE.PlaneGeometry(70, 220, 1, 1), mat(/* glsl */`
+      varying vec2 vUv; uniform float uTime;
+      void main() {
+        vec2 g = abs(fract(vec2(vUv.x * 35.0, vUv.y * 110.0 + uTime * 2.0)) - 0.5);
+        float line = smoothstep(0.06, 0.0, min(g.x, g.y));
+        float fade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
+        vec3 col = mix(vec3(0.0, 0.35, 0.18), vec3(0.2, 1.0, 0.55), line);
+        gl_FragColor = vec4(col * line * 1.6 * fade + col * 0.04, 1.0);
+      }`, {}));
+    grid.rotation.x = -Math.PI / 2; grid.position.y = -2.6; this.scene.add(grid);
+
+    // 学习卡片：两侧交错，随相机前进逐一掠过
+    this.cards = cardTextures.map(({ tex }, i) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.44),
+        new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+      const side = i % 2 === 0 ? -1 : 1;
+      m.position.set(side * 3.1, 0.4 + (i % 3) * 0.5, -4 - i * 4.4);
+      m.rotation.y = side * -0.5;
+      m.userData.phase = i * 1.7;
+      this.scene.add(m);
+      return m;
+    });
+
+    // 次元横幅
+    const banner = makeCanvasTexture(1024, 128, (ctx, c) => {
+      ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "Courier New", monospace';
+      ctx.textAlign = 'center'; ctx.fillText('// INSIDE THE SIGNAL — 6 STUDIES', c.width / 2, 82);
+    });
+    this.banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.75),
+      new THREE.MeshBasicMaterial({ map: banner.tex, transparent: true }));
+    this.banner.position.set(0, 2.4, -1.5); this.scene.add(this.banner);
+
+    // 揭示层：屏幕空间采样下一场景（挂相机、禁深度、最后渲染）
+    this.revealMat = mat(/* glsl */`
+      uniform sampler2D uNext; uniform float uReveal; uniform vec2 uRes;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x),
+                   mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+      }
+      void main() {
+        vec2 suv = gl_FragCoord.xy / uRes;              // 屏幕空间，而非 UV
+        float n = noise(gl_FragCoord.xy / 9.0) * 0.6 + noise(gl_FragCoord.xy / 33.0) * 0.4;
+        float open = smoothstep(uReveal - 0.06, uReveal + 0.06, n); // 噪声阈值推进
+        float edge = smoothstep(0.12, 0.0, abs(n - uReveal)) * step(0.02, uReveal);
+        vec3 col = texture2D(uNext, suv).rgb + vec3(0.1, 1.0, 0.4) * edge * 0.8;
+        gl_FragColor = vec4(col, 1.0 - open);
+      }`, { uNext: { value: null }, uReveal: { value: 0 } },
+      { transparent: true, depthTest: false, depthWrite: false });
+    this.reveal = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.revealMat);
+    this.reveal.renderOrder = 10;
+    this.camera.add(this.reveal);
+  }
+
+  fitRevealToCamera() {
+    const d = 0.5, fov = THREE.MathUtils.degToRad(this.camera.fov);
+    const h = 2 * d * Math.tan(fov / 2), w = h * this.camera.aspect;
+    this.reveal.scale.set(w, h, 1);
+    this.reveal.position.set(0, 0, -d);
+  }
+
+  render(state, nextTexture) {
+    const p = state.progress, t = state.time;
+    const fly = smoothstep(0.47, 0.86, p);
+    this.camera.position.set(
+      mouse.sx * 0.6,
+      0.6 + mouse.sy * 0.25,
+      lerp(7.5, -23, fly),
+    );
+    this.camera.lookAt(mouse.sx * 1.2, 0.6 + mouse.sy * 0.4, this.camera.position.z - 8);
+    this.cards.forEach((c) => {
+      c.lookAt(this.camera.position);
+      if (!REDUCED) c.position.y += Math.sin(t * 0.9 + c.userData.phase) * 0.0016;
+    });
+    this.revealMat.uniforms.uNext.value = nextTexture;
+    this.revealMat.uniforms.uReveal.value = smoothstep(0.80, 0.95, p);
+    this.fitRevealToCamera();
+
+    renderer.setRenderTarget(this.fbo);
+    renderer.render(this.scene, this.camera);
+    renderer.setRenderTarget(null);
+    return this.fbo.texture;
+  }
+}
+
+/* ============================================================
+   SCENE C · END — 终章
+   ============================================================ */
+class EndScene {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x000000);
+    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 50);
+    this.camera.position.set(0, 0, 3.2);
+    this.activeRange = [0.68, 1.05];
+
+    this.title = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.1),
+      new THREE.MeshBasicMaterial({ map: endTitle.tex, transparent: true }));
+    this.title.position.y = 0.1; this.scene.add(this.title);
+
+    const N = 350, pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const r = 2.5 + Math.random() * 4, a = Math.random() * Math.PI * 2;
+      pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = (Math.random() - 0.5) * 4; pos[i * 3 + 2] = Math.sin(a) * r - 2;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.dust = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: 0x39ff88, size: 0.02, transparent: true, opacity: 0.55,
+    }));
+    this.scene.add(this.dust);
+  }
+
+  render(state) {
+    this.title.position.y = 0.1 + (REDUCED ? 0 : Math.sin(state.time * 0.7) * 0.05);
+    this.title.rotation.y = mouse.sx * 0.08;
+    this.dust.rotation.y = state.time * 0.03;
+    renderer.setRenderTarget(this.fbo);
+    renderer.render(this.scene, this.camera);
+    renderer.setRenderTarget(null);
+    return this.fbo.texture;
+  }
+}
+
+/* ============================================================
+   COMPOSE — 最终合成：色差 / 扫描线 / grain / vignette / 穿幕闪断
+   ============================================================ */
+const composeMat = mat(/* glsl */`
+  uniform sampler2D uSceneA, uSceneB;
+  uniform vec2 uRes;
+  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig;
+  varying vec2 vUv;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  void main() {
+    // 穿幕瞬间（0.43~0.51）在黑幕顶点切换场景源：A 停、B 起
+    vec3 a = texture2D(uSceneA, vUv).rgb;
+    vec3 b = texture2D(uSceneB, vUv).rgb;
+    vec3 col = mix(a, b, uSwap);
+    // 色差：对已混合场景源做 ± 偏移重采样
+    vec2 off = vec2(uAberr) / uRes;
+    vec3 colR = mix(texture2D(uSceneA, vUv + off).rgb, texture2D(uSceneB, vUv + off).rgb, uSwap);
+    vec3 colB = mix(texture2D(uSceneA, vUv - off).rgb, texture2D(uSceneB, vUv - off).rgb, uSwap);
+    col = vec3(colR.r, col.g, colB.b);
+    // 扫描线（屏幕内增强）
+    float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(vUv.y * uRes.y * 2.6));
+    col *= scan;
+    // grain
+    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain;
+    // vignette
+    vec2 d = vUv - 0.5;
+    col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
+    // 穿幕黑幕（CRT 闪断感）
+    col *= 1.0 - uDip * 0.985;
+    gl_FragColor = vec4(col, 1.0);
+  }`, {
+  uSceneA: { value: null }, uSceneB: { value: null },
+  uDip: { value: 0 }, uSwap: { value: 0 },
+  uGrain: { value: 0.05 }, uAberr: { value: 1.6 }, uScan: { value: 0.1 }, uVig: { value: 0.75 },
+});
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+postCam.position.z = 5; // 平面落在视锥中部，远离 near/far 边界
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composeMat));
+
+/* ============================================================
+   组装：场景链 + 主循环
+   ============================================================ */
+const scenes = [new HeroScene(), new InsideScene(), new EndScene()];
+function makeFBO() {
+  return new THREE.WebGLRenderTarget(1, 1, {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    depthBuffer: true,
+  });
+}
+scenes.forEach((s) => { s.fbo = makeFBO(); });
+
+function resize() {
+  const w = innerWidth, h = innerHeight, dpr = DPR();
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(w, h);
+  scenes.forEach((s) => {
+    s.camera.aspect = w / h; s.camera.updateProjectionMatrix();
+    s.fbo.setSize(Math.floor(w * dpr * 0.9), Math.floor(h * dpr * 0.9)); // 稍降采样换性能
+  });
+  // uRes 以 FBO 像素为准：gl_FragCoord 类效果（揭示层）在 FBO 内采样才会对齐
+  shared.uRes.value.set(Math.floor(w * dpr * 0.9), Math.floor(h * dpr * 0.9));
+}
+addEventListener('resize', resize);
+resize();
+
+// UI 状态
+const secNum = document.getElementById('secNum');
+const secName = document.getElementById('secName');
+const hint = document.getElementById('hint');
+const loader = document.getElementById('loader');
+
+// 预热：每个场景先渲一帧，保证 FBO 有内容可供链上采样
+const state0 = { progress: 0, time: 0 };
+let texA = scenes[0].render(state0, scenes[1].fbo.texture);
+let texB = scenes[1].render(state0, scenes[2].fbo.texture);
+scenes[2].render(state0, null);
+loader.style.opacity = '0';
+setTimeout(() => loader.remove(), 700);
+
+const clock = new THREE.Clock();
+let frameCount = 0;
+const DEBUG = new URLSearchParams(location.search).has('debug');
+function frame() {
+  requestAnimationFrame(frame);
+  frameCount++;
+  if (DEBUG && frameCount % 30 === 0 && window.showErr) {
+    const i = renderer.info.render;
+    showErr(`[diag] draws=${i.calls} tris=${i.triangles} p=${progress.toFixed(2)}`);
+  }
+  const t = clock.getElapsedTime();
+  const state = { progress, time: t };
+  mouse.sx = lerp(mouse.sx, mouse.x, 0.06);
+  mouse.sy = lerp(mouse.sy, mouse.y, 0.06);
+  shared.uTime.value = t;
+
+  // 选择性渲染 + 倒序链：END → INSIDE → HERO，next 纹理逐级下传
+  let texC = scenes[2].fbo.texture, texBcur = scenes[1].fbo.texture;
+  if (inRange(scenes[2], progress)) texC = scenes[2].render(state, null);
+  if (inRange(scenes[1], progress)) texBcur = scenes[1].render(state, texC);
+  if (inRange(scenes[0], progress)) texA = scenes[0].render(state, texBcur);
+
+  // compose
+  composeMat.uniforms.uSceneA.value = texA;
+  composeMat.uniforms.uSceneB.value = texBcur;
+  composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
+  composeMat.uniforms.uDip.value =
+    smoothstep(0.43, 0.47, progress) * (1 - smoothstep(0.49, 0.53, progress));
+  composeMat.uniforms.uScan.value = lerp(0.06, 0.9, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
+  composeMat.uniforms.uAberr.value = 1.4 + uDipBoost(progress);
+  renderer.render(postScene, postCam);
+
+  // DOM 状态
+  const sec = progress < 0.44 ? ['01', 'SIGNAL'] : progress < 0.92 ? ['02', 'INSIDE'] : ['03', 'END'];
+  secNum.textContent = sec[0]; secName.textContent = sec[1];
+  hint.style.opacity = progress < 0.02 ? 1 : 0;
+}
+function inRange(s, p) { return p >= s.activeRange[0] && p <= s.activeRange[1]; }
+function uDipBoost(p) { return smoothstep(0.43, 0.47, p) * (1 - smoothstep(0.49, 0.53, p)) * 4; }
+frame();
+</script>
 </body>
 </html>

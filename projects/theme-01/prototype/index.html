@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>iiiiiei — Phase 1</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <section id="outer-world" class="world">
+    <canvas id="ascii-canvas"></canvas>
+
+    <div id="mac-stage">
+      <div id="mac" class="mac">
+        <div class="mac-depth"></div>
+        <div class="mac-shell">
+          <div class="mac-handle"></div>
+          <div class="mac-crt-bezel">
+            <div class="mac-crt" id="mac-crt">
+              <span class="mac-crt-text">ENTER</span>
+            </div>
+          </div>
+          <div class="mac-floppy"></div>
+          <div class="mac-logo-row">
+            <span class="apple-mark"></span>
+            <span class="mac-word">Macintosh</span>
+          </div>
+        </div>
+        <div class="mac-top">
+          <div class="mac-handle-cut"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="scroll-hint">scroll to enter · scroll up to exit</div>
+  </section>
+
+  <section id="inner-world" class="world">
+    <div class="crt-frame">
+      <div class="crt-fisheye">
+        <div class="crt-scanlines"></div>
+        <div class="crt-vignette"></div>
+        <div class="crt-noise"></div>
+        <div class="crt-content">
+          <h1 class="crt-text">Hello World</h1>
+          <p class="crt-sub">life is art’s whisper</p>
+          <p class="crt-back">scroll up to leave</p>
+        </div>
+      </div>
+    </div>
+  </section>
+  <script src="main.js"></script>
+</body>
+</html>
