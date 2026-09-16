@@ -15,7 +15,9 @@
   #scroll-space { height: 600vh; width: 1px; }
   #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
-  .ui { position: fixed; z-index: 10; pointer-events: none; user-select: none; }
+  .ui { position: fixed; z-index: 10; pointer-events: none; user-select: none;
+    filter: grayscale(1) contrast(1.06); transition: filter .9s; } /* 屏外世界连文字都是默片灰 */
+  body.inside .ui { filter: none; }
 
   nav.ui {
     top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
@@ -42,10 +44,25 @@
     right: 22px; bottom: 20px; font-size: 10px; letter-spacing: 0.08em;
     color: #666; max-width: 46vw; text-align: right; line-height: 1.5;
   }
+  /* 开机 loading：CRT 终端（对齐 shader.se 的思路——加载页就是站点的第一屏"开机动画"） */
   #loader {
-    position: fixed; inset: 0; z-index: 99; background: #000; color: var(--green);
+    position: fixed; inset: 0; z-index: 99; background: #050403; color: var(--green);
     display: flex; align-items: center; justify-content: center;
-    font-size: 12px; letter-spacing: 0.3em; transition: opacity .6s;
+  }
+  #loader::after { /* 扫描线覆层 */
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.30) 2px 4px);
+  }
+  #loader .boot { font-size: 12px; letter-spacing: .22em; line-height: 2.15; width: min(560px, 86vw); }
+  #loader .brand { color: var(--amber); font-size: 15px; letter-spacing: .5em; margin-bottom: 16px; }
+  #loader .bar { white-space: nowrap; }
+  #loader .pct { color: #9adfb8; }
+  #loader .note { color: #2f6c4a; font-size: 11px; margin-top: 14px; letter-spacing: .12em; }
+  #loader.off { animation: crtOff .45s ease-in forwards; }
+  @keyframes crtOff { /* CRT 关屏：画面竖压成一条亮线再熄灭 */
+    0% { transform: scaleY(1); filter: brightness(1); }
+    60% { transform: scaleY(.012); filter: brightness(2.6); }
+    100% { transform: scaleY(0); filter: brightness(0); opacity: 0; }
   }
   @media (max-width: 640px) { #credit { display: none; } nav .links { display: none; } }
 </style>
@@ -65,7 +82,14 @@
   <div id="sec" class="ui">SECTION <b id="secNum">01</b> / 03 — <span id="secName">SIGNAL</span></div>
   <div id="hint" class="ui">SCROLL ▼</div>
   <div id="credit" class="ui">a technical study inspired by shader.se.<br>original code &amp; copy · not affiliated</div>
-  <div id="loader">SIGNAL SYNC…</div>
+  <div id="loader">
+    <div class="boot">
+      <div class="brand">IIIIIEI SYSTEMS</div>
+      <div class="bar">SIGNAL SYNC <span id="bootBar">░░░░░░░░░░░░░░░░░░░░░░░</span> <span class="pct" id="bootPct">0%</span></div>
+      <div id="bootMsg">ACQUIRING SIGNAL…</div>
+      <div class="note">CRT-TUNNEL v1 · STAND BY</div>
+    </div>
+  </div>
   <script>
     // 开发用错误面板：任何脚本错误直接亮在页面上
     function showErr(msg) {
@@ -79,8 +103,25 @@
       d.textContent += msg + '\n';
     }
     window.showErr = showErr;
-    addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
-    addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
+  addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
+  addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
+
+  // 开机进度：模块脚本加载前由这里先爬到 55%，模块接管后段
+  (function () {
+    var p = 0, t0 = Date.now();
+    window.__boot = function (v, msg) {
+      p = Math.max(p, Math.min(v, 1));
+      if (msg) document.getElementById('bootMsg').textContent = msg;
+      var n = Math.round(p * 24);
+      document.getElementById('bootBar').textContent = '█'.repeat(n) + '░'.repeat(24 - n);
+      document.getElementById('bootPct').textContent = Math.round(p * 100) + '%';
+    };
+    (function crawl() {
+      var target = Math.min(0.55, (Date.now() - t0) / 1600 * 0.55);
+      window.__boot(target, target < 0.3 ? 'ACQUIRING SIGNAL…' : 'FETCHING MODULES…');
+      if (target < 0.55) requestAnimationFrame(crawl);
+    })();
+  })();
   </script>
 
 <script type="module">
@@ -595,33 +636,52 @@ class EndScene {
 const composeMat = mat(/* glsl */`
   uniform sampler2D uSceneA, uSceneB;
   uniform vec2 uRes;
-  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig;
+  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  /* 卓别林胶片：黑白 · 高对比 · 大颗粒 · 划痕 · 灰尘 · 放映机闪烁（屏幕外的世界） */
+  vec3 filmGrade(vec3 c, vec2 uv, float t) {
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    l = clamp((l - 0.5) * 1.32 + 0.46, 0.0, 1.0);
+    l += (hash(uv * uRes * 0.8 + floor(t * 24.0)) - 0.5) * 0.16;           // 大颗粒
+    float col = floor(uv.x * 190.0);
+    float scr = step(0.9962, hash(vec2(col, floor(t * 5.0))));             // 偶发竖划痕
+    l += scr * 0.28 * hash(vec2(col, floor(uv.y * 46.0) + floor(t * 24.0)));
+    float dust = step(0.9993, hash(floor(uv * 80.0) + floor(t * 11.0)));   // 灰尘斑
+    l = mix(l, 0.95, dust * 0.6);
+    l *= 0.94 + 0.06 * sin(t * 19.0 + sin(t * 7.3) * 4.0);                 // 曝光闪烁
+    l *= 1.0 - smoothstep(0.38, 0.9, length(uv - 0.5)) * 0.4;              // 老镜头暗角
+    return vec3(l);
+  }
   void main() {
+    // 片门抖动（gate weave）：胶片时代的整帧轻微游移
+    vec2 uv = vUv + (vec2(hash(vec2(floor(uTime * 16.0), 1.0)),
+                          hash(vec2(floor(uTime * 16.0), 2.0))) - 0.5) * 0.0024 * uFilm;
     // 穿幕瞬间（0.43~0.51）在黑幕顶点切换场景源：A 停、B 起
-    vec3 a = texture2D(uSceneA, vUv).rgb;
-    vec3 b = texture2D(uSceneB, vUv).rgb;
+    vec3 a = texture2D(uSceneA, uv).rgb;
+    vec3 b = texture2D(uSceneB, uv).rgb;
     vec3 col = mix(a, b, uSwap);
     // 色差：对已混合场景源做 ± 偏移重采样
     vec2 off = vec2(uAberr) / uRes;
-    vec3 colR = mix(texture2D(uSceneA, vUv + off).rgb, texture2D(uSceneB, vUv + off).rgb, uSwap);
-    vec3 colB = mix(texture2D(uSceneA, vUv - off).rgb, texture2D(uSceneB, vUv - off).rgb, uSwap);
+    vec3 colR = mix(texture2D(uSceneA, uv + off).rgb, texture2D(uSceneB, uv + off).rgb, uSwap);
+    vec3 colB = mix(texture2D(uSceneA, uv - off).rgb, texture2D(uSceneB, uv - off).rgb, uSwap);
     col = vec3(colR.r, col.g, colB.b);
+    // 默片时代（黑墙外）→ 穿幕瞬间爆出彩色（绿野仙踪式开关）
+    col = mix(col, filmGrade(col, uv, uTime), uFilm);
     // 扫描线（屏幕内增强）
-    float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(vUv.y * uRes.y * 2.6));
+    float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(uv.y * uRes.y * 2.6));
     col *= scan;
     // grain
-    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain;
+    col += (hash(uv * (uTime + 1.0)) - 0.5) * uGrain;
     // vignette
-    vec2 d = vUv - 0.5;
+    vec2 d = uv - 0.5;
     col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
     // 穿幕黑幕（CRT 闪断感）
     col *= 1.0 - uDip * 0.985;
     gl_FragColor = vec4(col, 1.0);
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
-  uDip: { value: 0 }, uSwap: { value: 0 },
+  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 },
   uGrain: { value: 0.05 }, uAberr: { value: 1.6 }, uScan: { value: 0.1 }, uVig: { value: 0.75 },
 });
 const postScene = new THREE.Scene();
@@ -662,12 +722,17 @@ const hint = document.getElementById('hint');
 const loader = document.getElementById('loader');
 
 // 预热：每个场景先渲一帧，保证 FBO 有内容可供链上采样
+window.__boot && window.__boot(0.74, 'COMPILING SHADERS…');
 const state0 = { progress: 0, time: 0 };
 let texA = scenes[0].render(state0, scenes[1].fbo.texture);
 let texB = scenes[1].render(state0, scenes[2].fbo.texture);
 scenes[2].render(state0, null);
-loader.style.opacity = '0';
-setTimeout(() => loader.remove(), 700);
+window.__boot && window.__boot(1, 'SIGNAL LOCKED');
+setTimeout(() => {
+  if (REDUCED || matchMedia('(prefers-reduced-motion: reduce)').matches) { loader.remove(); return; }
+  loader.classList.add('off'); // CRT 关屏动画，曲线压成亮线后移除
+  loader.addEventListener('animationend', () => loader.remove(), { once: true });
+}, 320);
 
 const clock = new THREE.Clock();
 let frameCount = 0;
@@ -695,6 +760,8 @@ function frame() {
   composeMat.uniforms.uSceneA.value = texA;
   composeMat.uniforms.uSceneB.value = texBcur;
   composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
+  // 默片→彩色：黑幕顶点完成换色，穿幕闪光即爆出色彩
+  composeMat.uniforms.uFilm.value = 1 - smoothstep(0.40, 0.49, progress);
   composeMat.uniforms.uDip.value =
     smoothstep(0.43, 0.47, progress) * (1 - smoothstep(0.49, 0.53, progress));
   composeMat.uniforms.uScan.value = lerp(0.06, 0.9, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
@@ -705,6 +772,7 @@ function frame() {
   const sec = progress < 0.44 ? ['01', 'SIGNAL'] : progress < 0.92 ? ['02', 'INSIDE'] : ['03', 'END'];
   secNum.textContent = sec[0]; secName.textContent = sec[1];
   hint.style.opacity = progress < 0.02 ? 1 : 0;
+  document.body.classList.toggle('inside', progress > 0.46); // DOM 覆盖层随穿屏恢复彩色
 }
 function inRange(s, p) { return p >= s.activeRange[0] && p <= s.activeRange[1]; }
 function uDipBoost(p) { return smoothstep(0.43, 0.47, p) * (1 - smoothstep(0.49, 0.53, p)) * 4; }

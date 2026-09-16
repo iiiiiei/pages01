@@ -55,6 +55,9 @@
 | shopify.com/editions/winter2025 | 复古风 + 老电视（"Boring"） |
 | Codrops：Spring '26 工程拆解 | **技术内幕**（tympanus.net/codrops，2026-06-26） |
 | shader.se | 伪 3D、次元入口（瑞典工作室，Three.js，SOTD） |
+| shader.se · loading 页 | CRT 终端风加载界面：字符块进度条（████░░）+ 品牌标识 + 扫描线质感，与主站后处理统一（2026-09-16 实测） |
+| shader.se · 404 彩蛋 | **金库门**：3D 门 + 舵轮 + 铰链螺栓 + 404 大字；滚动开门 → 拟物页角卷起转场 → 门洞露出真实首页场景 → 穿回首页（官方 [X 帖](https://x.com/shadersweden/status/2091296425699086657)，2026-09-16 实测） |
+| OpenAI《The Intelligence Age》 | 超级碗 2025 广告（Ratatat "Neckbrace"，2025-02-09）：黑白点阵聚散成象 + "the first …" 叙事节奏；40 秒处为白点组成的复古窗口（地球仪 ··· 80s 一体机）。已借其语言做 404 点彩页；外部黑白默片与它的单色克制同源 |
 | vgpu.sh | ASCII 阴影/光照计算 |
 | tympanus.net/Tutorials/ASCIILogo | ASCII 风格世界 |
 | codepen.io/fand/full/YzoWyqJ | 鼠标光源 + CRT 抖动文本占位页 |
