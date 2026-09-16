@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>iiiiiei.com — preview index</title>
+<style>
+  :root { --green: #39ff88; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000; color: var(--green);
+    font-family: "Courier New", ui-monospace, monospace;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 40px; padding: 40px;
+  }
+  h1 { font-size: 28px; letter-spacing: 0.3em; font-weight: 700; }
+  .sub { color: #5c7a68; font-size: 13px; letter-spacing: 0.12em; text-align: center; line-height: 1.8; }
+  ul { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  a {
+    color: var(--green); text-decoration: none; font-size: 15px;
+    border: 1px solid #1d5c3a; padding: 14px 26px; display: block;
+    letter-spacing: 0.06em; transition: background .2s, transform .2s;
+  }
+  a:hover { background: #06211433; transform: translateX(6px); }
+  .tag { color: #2a5c41; font-size: 11px; margin-right: 12px; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>IIIIIEI</h1>
+    <p class="sub">我坚信生活是艺术的低语 · I firmly believe that life is art's whisper.<br>
+    github pages 预览索引 · 正式发布将经 Cloudflare 抵达 iiiiiei.com</p>
+  </div>
+  <ul>
+    <li><a href="./projects/theme-01/study/shader-se-clone/">
+      <span class="tag">STUDY</span>shader.se 管线复刻 · FBO 链 + 穿屏过渡 + CRT 后处理</a></li>
+  </ul>
+  <p class="sub">editions 尚未出版 · 第一期构想探讨中</p>
+</body>
+</html>
