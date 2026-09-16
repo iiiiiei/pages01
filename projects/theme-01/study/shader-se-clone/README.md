@@ -72,6 +72,24 @@ Filip Kantedal 与 Simon Hedlund（shader.se 创始人）在 Codrops 发表过�
 这两点的共同启示：**边缘状态也是叙事面**。loading 是第一印象、404 是"迷路时刻"——它们
 与 memo 里的「彩蛋精神」直接对应，属于正式站必做项。
 
+## 原站源码逆向（2026-09-16，从生产 bundle 提取，本副本后期据此校准）
+
+shader.se 是 Next.js 生产站，但其 chunk JS 里 TSL 节点与 GLSL 片段基本明文可读。关键收获：
+
+- **每页后期参数表**（页面配置直接暴露）：首页 `lensDistortion:0, borders:0, pow:1.92,
+  chromaticAbberationStrength:1.04, vignette:{.5, .3, .1}`；屏内页 `lensDistortion:.16,
+  borders:1, pow:1.36, chromatic:1, vignette:{0, .32, 0}` + `motionBlur`。
+- **凸面变形 `DH/DV`**：`i=uv-.5; n=dot(i,i); uv'=i*(1+n*k)`，再整体 `(1-k)` 缩放 + `k/2`
+  回中（防止角落越界）；强度由 `smoothstep(.3655, 0, borders)` 门控。
+- **噪点 `paperGrain`**：`rgb = rgb*mask + noise`，强度仅 **0.05×亮度遮罩**——"高级感"的秘密是克制。
+- **圆角边框**：合成器 `SampleComposeTexture` 用 rounded-box SDF（软边 smoothstep .04/.005）
+  对每页纹理做圆角遮罩——"真的是一台老显示器"即来自这里 + 凸面 + 边缘压暗。
+- **色差 `ChromaticAberrationNode2`**：偏移 `0.001*2*strength`，采样到 UI 处自动减半。
+
+本副本 compose 已按此校准：细颗粒（0.07 屏外/0.05 屏内）、微弱放映机呼吸（±1.5%）、
+几乎不可察的片门抖动（0.0007）、屏内玻璃层（lensBarrel k=.10 + 圆角 SDF 边框 + 边缘压暗
++ 轻对比 + 内缘荧光）、穿幕改为窄窗浅闪（深度 0.45，不再黑屏割裂）。
+
 ## 运行
 
 ```bash
