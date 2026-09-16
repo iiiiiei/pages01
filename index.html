@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>IIIIIEI — Pipeline Study (inspired by shader.se)</title>
+<title>IIIIIEI — 管线复刻（学习 shader.se）</title>
 <style>
   :root { --green: #39ff88; --amber: #ffb000; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -76,18 +76,18 @@
   <canvas id="gl"></canvas>
 
   <nav class="ui">
-    <span>IIIIIEI · PIPELINE STUDY</span>
-    <span class="links"><span>01 SIGNAL</span><span>02 INSIDE</span><span>03 END</span></span>
+    <span>IIIIIEI · 管线复刻</span>
+    <span class="links"><span>01 信号</span><span>02 屏内</span><span>03 终章</span></span>
   </nav>
-  <div id="sec" class="ui">SECTION <b id="secNum">01</b> / 03 — <span id="secName">SIGNAL</span></div>
-  <div id="hint" class="ui">SCROLL ▼</div>
-  <div id="credit" class="ui">a technical study inspired by shader.se.<br>original code &amp; copy · not affiliated</div>
+  <div id="sec" class="ui">段落 <b id="secNum">01</b> / 03 — <span id="secName">信号</span></div>
+  <div id="hint" class="ui">滚动 ▼</div>
+  <div id="credit" class="ui">一项技术复刻，灵感来自 shader.se。<br>代码与文案均为原创 · 非官方、无关联</div>
   <div id="loader">
     <div class="boot">
-      <div class="brand">IIIIIEI SYSTEMS</div>
-      <div class="bar">SIGNAL SYNC <span id="bootBar">░░░░░░░░░░░░░░░░░░░░░░░</span> <span class="pct" id="bootPct">0%</span></div>
-      <div id="bootMsg">ACQUIRING SIGNAL…</div>
-      <div class="note">CRT-TUNNEL v1 · STAND BY</div>
+      <div class="brand">IIIIIEI 系统</div>
+      <div class="bar">信号同步 <span id="bootBar">░░░░░░░░░░░░░░░░░░░░░░░░</span> <span class="pct" id="bootPct">0%</span></div>
+      <div id="bootMsg">正在捕获信号…</div>
+      <div class="note">CRT 隧道 v1 · 请稍候</div>
     </div>
   </div>
   <script>
@@ -106,19 +106,24 @@
   addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
   addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
 
-  // 开机进度：模块脚本加载前由这里先爬到 55%，模块接管后段
+  // 开机进度：模块脚本加载前由这里先爬到 55%，模块接管后段。
+  // 注意：loading 层可能在爬行结束前就被模块移除——所有取元素都要判空（用户截图抓到过 bootMsg null 报错）。
   (function () {
     var p = 0, t0 = Date.now();
+    var $ = function (id) { return document.getElementById(id); };
     window.__boot = function (v, msg) {
+      var bar = $('bootBar'); if (!bar) return; // 层已移除：静默退出
+      var advanced = v > p;                     // 只在进度前进的调用里更新文案，防旧消息回写
       p = Math.max(p, Math.min(v, 1));
-      if (msg) document.getElementById('bootMsg').textContent = msg;
+      if (msg && advanced) { var m = $('bootMsg'); if (m) m.textContent = msg; }
       var n = Math.round(p * 24);
-      document.getElementById('bootBar').textContent = '█'.repeat(n) + '░'.repeat(24 - n);
-      document.getElementById('bootPct').textContent = Math.round(p * 100) + '%';
+      bar.textContent = '█'.repeat(n) + '░'.repeat(24 - n);
+      var pct = $('bootPct'); if (pct) pct.textContent = Math.round(p * 100) + '%';
     };
     (function crawl() {
+      if (!$('bootBar')) return; // 层没了就别再爬
       var target = Math.min(0.55, (Date.now() - t0) / 1600 * 0.55);
-      window.__boot(target, target < 0.3 ? 'ACQUIRING SIGNAL…' : 'FETCHING MODULES…');
+      window.__boot(target, target < 0.3 ? '正在捕获信号…' : '正在拉取模块…');
       if (target < 0.55) requestAnimationFrame(crawl);
     })();
   })();
@@ -184,55 +189,55 @@ function makeCanvasTexture(w, h, draw) {
   return { tex, repaint };
 }
 
-/* 开机自检屏（琥珀单色终端） */
+/* 开机自检屏（琥珀单色终端，中文 BIOS） */
 const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
   ctx.fillStyle = '#030200'; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.fillStyle = '#ffb000'; ctx.font = 'bold 44px "Courier New", monospace';
-  ctx.fillText('IIIIIEI SYSTEMS', 48, 96);
-  ctx.font = '28px "Courier New", monospace'; ctx.fillStyle = '#b97a00';
+  ctx.fillStyle = '#ffb000'; ctx.font = 'bold 52px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillText('IIIIIEI 系统', 48, 96);
+  ctx.font = '28px "Courier New", "Songti SC", "PingFang SC", monospace'; ctx.fillStyle = '#b97a00';
   const lines = [
     'BIOS v1.0  (C) 2026 IIIIIEI',
     '',
-    'MEM CHECK ......... 640K OK',
-    'SIGNAL LOCK ....... OK',
-    'NEXT SCENE ........ STANDBY',
+    '内存自检 ......... 640K 正常',
+    '信号锁定 ......... 正常',
+    '下一场景 ......... 待命',
     '',
-    '> LOADING CRT-TUNNEL' + (blink ? ' ▮' : '  '),
+    '> 正在载入 CRT 隧道' + (blink ? ' ▮' : '  '),
   ];
   lines.forEach((s, i) => ctx.fillText(s, 48, 180 + i * 46));
 });
 if (!REDUCED) setInterval(() => boot.repaint(Math.floor(Date.now() / 500) % 2 === 0), 500);
 
-/* 学习卡片（终端绿） */
+/* 学习卡片（终端绿，中文） */
 const STUDIES = [
-  ['STUDY 01 · SELECTIVE RENDER', 'out-of-range scenes cost zero draw calls'],
-  ['STUDY 02 · FBO CHAIN', 'scenes render in reverse, each feeds the next'],
-  ['STUDY 03 · FRUSTUM FIT', 'camera flies to the exact screen distance'],
-  ['STUDY 04 · SCREEN-SPACE', 'transitions sample by fragment coordinate'],
-  ['STUDY 05 · RENDER OFFSET', 'the next frame is ready before you arrive'],
-  ['STUDY 06 · ONE SCROLL', 'scroll position drives every uniform'],
+  ['研究 01 · 选择性渲染', '视野外的场景，零 draw call'],
+  ['研究 02 · FBO 链', '场景倒序渲染，逐级喂给下一场景'],
+  ['研究 03 · 视锥匹配', '相机飞到恰好铺满屏幕的距离'],
+  ['研究 04 · 屏幕空间', '过渡按片元坐标采样下一场景'],
+  ['研究 05 · 渲染偏移', '你到达之前，下一帧已备好'],
+  ['研究 06 · 一根滚动条', '滚动位置驱动所有 uniform'],
 ];
 const cardTextures = STUDIES.map(([title, sub]) => makeCanvasTexture(512, 320, (ctx, c) => {
   ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.strokeStyle = '#1d7a48'; ctx.lineWidth = 3; ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
-  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "Courier New", monospace';
+  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "Courier New", "Songti SC", "PingFang SC", monospace';
   ctx.fillText(title, 34, 70);
-  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "Courier New", monospace';
-  sub.match(/.{1,30}/g)?.forEach((s, i) => ctx.fillText(s, 34, 130 + i * 36));
-  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "Courier New", monospace';
-  ctx.fillText('iiiiiei // study of a public pipeline', 34, c.height - 36);
+  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "Courier New", "Songti SC", "PingFang SC", monospace';
+  sub.match(/.{1,15}/g)?.forEach((s, i) => ctx.fillText(s, 34, 130 + i * 36));
+  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillText('iiiiiei // 公开管线的学习复刻', 34, c.height - 36);
 }));
 
 /* 终章大字 */
 const endTitle = makeCanvasTexture(1024, 512, (ctx, c) => {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 72px "Courier New", monospace';
-  ctx.fillText('END OF TRANSMISSION', c.width / 2, 210);
-  ctx.fillStyle = '#39ff88'; ctx.font = '30px "Courier New", monospace';
-  ctx.fillText('this pipeline now belongs to iiiiiei.com', c.width / 2, 300);
-  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "Courier New", monospace';
-  ctx.fillText('thanks for scrolling through the machine', c.width / 2, 370);
+  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 96px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillText('传输结束', c.width / 2, 210);
+  ctx.fillStyle = '#39ff88'; ctx.font = '30px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillText('这条管线现在属于 iiiiiei.com', c.width / 2, 300);
+  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillText('谢谢你一路滚过这台机器', c.width / 2, 370);
 });
 
 /* 通用 ShaderMaterial 快捷方式（自带全屏 varying vUv 的默认顶点着色器） */
@@ -530,8 +535,8 @@ class InsideScene {
     // 次元横幅
     const banner = makeCanvasTexture(1024, 128, (ctx, c) => {
       ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "Courier New", monospace';
-      ctx.textAlign = 'center'; ctx.fillText('// INSIDE THE SIGNAL — 6 STUDIES', c.width / 2, 82);
+      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "Courier New", "Songti SC", "PingFang SC", monospace';
+      ctx.textAlign = 'center'; ctx.fillText('// 屏内信号 — 六项研究', c.width / 2, 82);
     });
     this.banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.75),
       new THREE.MeshBasicMaterial({ map: banner.tex, transparent: true }));
@@ -722,12 +727,12 @@ const hint = document.getElementById('hint');
 const loader = document.getElementById('loader');
 
 // 预热：每个场景先渲一帧，保证 FBO 有内容可供链上采样
-window.__boot && window.__boot(0.74, 'COMPILING SHADERS…');
+window.__boot && window.__boot(0.74, '正在编译着色器…');
 const state0 = { progress: 0, time: 0 };
 let texA = scenes[0].render(state0, scenes[1].fbo.texture);
 let texB = scenes[1].render(state0, scenes[2].fbo.texture);
 scenes[2].render(state0, null);
-window.__boot && window.__boot(1, 'SIGNAL LOCKED');
+window.__boot && window.__boot(1, '信号已锁定');
 setTimeout(() => {
   if (REDUCED || matchMedia('(prefers-reduced-motion: reduce)').matches) { loader.remove(); return; }
   loader.classList.add('off'); // CRT 关屏动画，曲线压成亮线后移除
@@ -769,7 +774,7 @@ function frame() {
   renderer.render(postScene, postCam);
 
   // DOM 状态
-  const sec = progress < 0.44 ? ['01', 'SIGNAL'] : progress < 0.92 ? ['02', 'INSIDE'] : ['03', 'END'];
+  const sec = progress < 0.44 ? ['01', '信号'] : progress < 0.92 ? ['02', '屏内'] : ['03', '终章'];
   secNum.textContent = sec[0]; secName.textContent = sec[1];
   hint.style.opacity = progress < 0.02 ? 1 : 0;
   document.body.classList.toggle('inside', progress > 0.46); // DOM 覆盖层随穿屏恢复彩色
