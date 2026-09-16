@@ -642,21 +642,19 @@ class EndScene {
 const composeMat = mat(/* glsl */`
   uniform sampler2D uSceneA, uSceneB;
   uniform vec2 uRes;
-  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm, uGlass, uAspect;
+  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm, uGlass, uGlassFlash, uAspect;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-  /* 屏外世界：卓别林黑白胶片。颗粒/闪烁量级对齐 shader.se 的克制（其 grain≈0.05×亮度遮罩） */
+  /* 屏外世界：卓别林黑白胶片。颗粒量级对齐 shader.se 实测（极细、几乎察觉不到） */
   vec3 filmGrade(vec3 c, vec2 uv, float t) {
     float l = dot(c, vec3(0.299, 0.587, 0.114));
-    l = clamp((l - 0.5) * 1.3 + 0.47, 0.0, 1.0);
-    l += (hash(uv * uRes * 1.4 + floor(t * 24.0) * 7.3) - 0.5) * 0.07; // 细颗粒
+    l = clamp((l - 0.5) * 1.22 + 0.48, 0.0, 1.0);
+    l += (hash(uv * uRes * 1.6 + floor(t * 24.0) * 7.3) - 0.5) * 0.05; // 极细颗粒（参考站量级）
     float col = floor(uv.x * 210.0);
-    float scr = step(0.9988, hash(vec2(col, floor(t * 4.0))));         // 稀少竖划痕
-    l += scr * 0.2 * hash(vec2(col, floor(uv.y * 50.0) + floor(t * 24.0)));
-    float dust = step(0.9998, hash(floor(uv * 70.0) + floor(t * 9.0)));// 极稀灰尘
-    l = mix(l, 0.9, dust * 0.5);
-    l *= 0.985 + 0.015 * sin(t * 9.5 + sin(t * 4.1) * 2.0);            // 放映机呼吸（微弱，不频闪）
-    l *= 1.0 - smoothstep(0.42, 0.95, length(uv - 0.5)) * 0.35;        // 老镜头暗角
+    float scr = step(0.9975, hash(vec2(col, floor(t * 3.0))));         // 偶尔一根划痕
+    l += scr * 0.14 * hash(vec2(col, floor(uv.y * 50.0) + floor(t * 24.0)));
+    l *= 0.99 + 0.01 * sin(t * 8.0 + sin(t * 3.7) * 2.0);              // 放映机呼吸（极弱）
+    l *= 1.0 - smoothstep(0.5, 1.0, length(uv - 0.5)) * 0.3;           // 老镜头暗角
     return vec3(l);
   }
   /* shader.se 式凸面变形（从其生产 bundle 的 DH+DV 还原）：先外扩再 (1-k) 缩回，角落不越界 */
@@ -674,8 +672,8 @@ const composeMat = mat(/* glsl */`
     // 片门抖动：收得几乎不可察（原 0.0024 太晃）
     vec2 uv = vUv + (vec2(hash(vec2(floor(uTime * 14.0), 1.0)),
                           hash(vec2(floor(uTime * 14.0), 2.0))) - 0.5) * 0.0007 * uFilm;
-    // 屏内隔着一层玻璃：轻凸面（其 lensDistortion .16 档的收敛版）
-    vec2 suv = mix(uv, lensBarrel(uv, 0.10), uGlass);
+    // 屏内：与参考站一致——全出血、近乎平面。凸面只在穿屏瞬间一闪（0.47→0.56 快进快出）
+    vec2 suv = mix(uv, lensBarrel(uv, 0.14), uGlass * uGlassFlash);
 
     vec3 a = texture2D(uSceneA, suv).rgb;
     vec3 b = texture2D(uSceneB, suv).rgb;
@@ -688,20 +686,18 @@ const composeMat = mat(/* glsl */`
 
     col = mix(col, filmGrade(col, uv, uTime), uFilm); // 屏外：默片时代
 
-    // 屏内：显示器玻璃 + 圆角边框（向 shader.se 的边框处理靠拢）
-    if (uGlass > 0.001) {
+    // 穿屏一瞬的"玻璃质感"快闪：圆角边框 + 边缘压暗只在这时出现（参考站的圆角属过渡件，非常驻）
+    if (uGlass * uGlassFlash > 0.001) {
+      float g = uGlass * uGlassFlash;
       vec2 p = (suv - 0.5) * vec2(uAspect, 1.0);
-      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.075;          // 壳边 ~7.5%
-      float d = sdRound(p, halfSize, 0.16);                       // 大圆角
-      float insideMask = smoothstep(0.0, 0.012, -d);              // 软边内遮罩
-      float depth = smoothstep(0.0, 0.38, -d);                    // 距边缘的深度
-      vec3 screenCol = col * (0.72 + 0.28 * depth);               // 玻璃边缘压暗
-      screenCol = pow(max(screenCol, 0.0), vec3(1.0 + 0.16));     // 轻对比（其 pow≈1.36 档）
-      float rim = smoothstep(0.045, 0.008, -d);                   // 内缘一圈荧光
-      screenCol += rim * vec3(0.05, 0.10, 0.07);
-      vec3 bez = vec3(0.016, 0.015, 0.019);                       // 深色外壳，非纯黑
-      vec3 glassed = mix(bez, screenCol, insideMask);
-      col = mix(col, glassed, uGlass);
+      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.07;
+      float d = sdRound(p, halfSize, 0.18);
+      float insideMask = smoothstep(0.0, 0.012, -d);
+      vec3 screenCol = col * (0.78 + 0.22 * smoothstep(0.0, 0.38, -d));
+      float rim = smoothstep(0.045, 0.008, -d);
+      screenCol += rim * vec3(0.04, 0.09, 0.06);
+      vec3 bez = vec3(0.016, 0.015, 0.019);
+      col = mix(col, mix(bez, screenCol, insideMask), g);
     }
 
     // 扫描线（屏幕内增强）
@@ -717,7 +713,7 @@ const composeMat = mat(/* glsl */`
     gl_FragColor = vec4(col, 1.0);
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
-  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 },
+  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 },
   uGrain: { value: 0.05 }, uAberr: { value: 1.6 }, uScan: { value: 0.1 }, uVig: { value: 0.75 },
   uAspect: { value: 1 },
 });
@@ -800,12 +796,14 @@ function frame() {
   composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
   // 默片→彩色：黑幕顶点完成换色，穿幕闪光即爆出色彩
   composeMat.uniforms.uFilm.value = 1 - smoothstep(0.40, 0.49, progress);
-  // 屏内玻璃+圆角边框：穿幕后渐入
-  composeMat.uniforms.uGlass.value = smoothstep(0.47, 0.56, progress);
-  // 穿幕瞬间只留一道快速软闪（窗口窄、深度浅——黑屏割裂感的反义）
+  // 屏内与参考站对齐：全出血、近乎平面。玻璃感只作为穿屏一瞬的快闪（0.46→0.60 快进快出）
+  composeMat.uniforms.uGlass.value = smoothstep(0.46, 0.52, progress);
+  composeMat.uniforms.uGlassFlash.value =
+    smoothstep(0.46, 0.50, progress) * (1 - smoothstep(0.52, 0.60, progress));
+  // 穿幕瞬间只留一道极浅的软闪（参考站全程连续，不留黑幕）
   composeMat.uniforms.uDip.value =
-    smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.45;
-  composeMat.uniforms.uScan.value = lerp(0.06, 0.9, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
+    smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
+  composeMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
   composeMat.uniforms.uAberr.value = 1.4 + uDipBoost(progress);
   renderer.render(postScene, postCam);
 
