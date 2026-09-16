@@ -561,10 +561,11 @@ setTimeout(() => loader.remove(), 700);
 
 const clock = new THREE.Clock();
 let frameCount = 0;
+const DEBUG = new URLSearchParams(location.search).has('debug');
 function frame() {
   requestAnimationFrame(frame);
   frameCount++;
-  if (frameCount % 30 === 0 && window.showErr) {
+  if (DEBUG && frameCount % 30 === 0 && window.showErr) {
     const i = renderer.info.render;
     showErr(`[diag] draws=${i.calls} tris=${i.triangles} p=${progress.toFixed(2)}`);
   }
