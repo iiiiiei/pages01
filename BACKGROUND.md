@@ -17,10 +17,11 @@
 ## 代码与部署链路
 
 - 源代码托管：GitHub
-- 本项目仓库：https://github.com/iiiiiei/pages01（已建立）
-- 工作流：在 GitHub 上开发与预览（与 ZCode 迭代），push 后 Cloudflare 自动构建部署，每个分支/PR 自动生成预览 URL
-- 托管平台：Cloudflare（Pages 或 Workers，见下方决策记录）
-- Cloudflare 当前状态：仅有一个默认占位页，等待真实部署
+- 本项目仓库：https://github.com/iiiiiei/pages01（已打通本地 ↔ 远端，凭证走钥匙串 @github 插件 token）
+- **预览通道**：GitHub Pages（main 分支根目录，https://iiiiiei.github.io/pages01/）——根路径 = Phase 1 原型（用户在 GitHub 上迭代的 20+ 提交，ASCII 外部世界 + CSS 3D Macintosh），`studies.html` = 预览索引，`projects/theme-01/study/shader-se-clone/` = shader.se 管线学习副本
+- **正式发布**：Cloudflare（待站点一期成型后接 Workers/Pages + 绑定 iiiiiei.com）
+- 工作流：桌面工作区开发 → git push → GitHub Pages 自动更新预览
+- 注意：GitHub Pages 缓存 10 分钟（cache-control: max-age=600），改版后验证线上效果需绕缓存（加查询参数）
 
 ## 平台决策记录（2026-09 核实）
 
