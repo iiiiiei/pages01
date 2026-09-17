@@ -185,6 +185,45 @@ const lenis = new Lenis({ lerp: 0.09, smoothWheel: true });
 lenis.on('scroll', (e) => { progress = clamp(e.scroll / Math.max(1, e.limit), 0, 1); });
 (function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(0);
 
+/* ---------------- 吸附系统（还原参考站 snapPoints 机制：方向性速度倍率，非硬吸附） ----------------
+   参考站 bundle 实测：锚点前 0.10 区间滚轮×2.2 吸入加速，刚越过 0.04 区间×0.35 缓冲；
+   键盘直接跳锚点；触屏/native 滚动豁免。 */
+const SNAPS = [
+  { id: '信号', p: 0 },
+  { id: '屏内', p: 0.52 },
+  { id: '终章', p: 0.97 },
+];
+function snapMultiplier(dy) {
+  const limit = Math.max(1, lenis.limit);
+  const cur = lenis.targetScroll / limit;
+  const dir = dy >= 0 ? 1 : -1;
+  let m = 1;
+  for (const s of SNAPS) {
+    const d = (s.p - cur) * dir; // 锚点在滚动方向上的有符号距离
+    if (d > 0 && d <= 0.05) m = Math.max(m, 1.8);       // 前方近锚：吸入加速（窄区）
+    if (d <= 0 && d >= -0.05) m = Math.min(m, 0.3);     // 刚越过：缓冲停靠
+  }
+  return m;
+}
+addEventListener('wheel', (e) => {
+  if (REDUCED || e.ctrlKey) return; // 缩放手势/降级直通
+  e.preventDefault();
+  e.stopImmediatePropagation(); // 接管 Lenis 的默认滚轮，改走倍率通道
+  const boosted = e.deltaY * snapMultiplier(e.deltaY);
+  lenis.scrollTo(lenis.targetScroll + clamp(boosted, -900, 900)); // 单次增益封顶
+}, { passive: false, capture: true });
+addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const limit = Math.max(1, lenis.limit);
+  const cur = lenis.animatedScroll / limit;
+  let target = null;
+  if (e.key === 'ArrowDown' || e.key === 'PageDown') target = SNAPS.find((s) => s.p > cur + 0.01);
+  if (e.key === 'ArrowUp' || e.key === 'PageUp') target = [...SNAPS].reverse().find((s) => s.p < cur - 0.01);
+  if (e.key === 'Home') target = SNAPS[0];
+  if (e.key === 'End') target = { p: 1 };
+  if (target) { e.preventDefault(); lenis.scrollTo(target.p * limit, { duration: REDUCED ? 0.4 : 1.5 }); }
+});
+
 /* ---------------- 鼠标视差 ---------------- */
 const mouse = { x: 0, y: 0, sx: 0, sy: 0 };
 addEventListener('pointermove', (e) => {
@@ -411,8 +450,8 @@ class HeroScene {
         vec3 boot = texture2D(uBoot, uv).rgb;
         vec3 next = texture2D(uNext, uv).rgb;
         vec3 col = mix(boot, next, uMix);
-        // 圆角玻璃窗遮罩 + 边缘压暗（参考站屏幕内容同款：内容裁在弧面圆角窗里）
-        float d = sdRound(vUv - 0.5, vec2(0.5) - 0.022, 0.11);
+        // 圆角玻璃窗遮罩 + 边缘压暗（与 compose 屏内遮罩同参数：一个系统两个状态）
+        float d = sdRound(vUv - 0.5, vec2(0.5) - 0.028, 0.16);
         float m = smoothstep(0.0, 0.012, -d);
         col *= 0.78 + 0.22 * smoothstep(0.0, 0.3, -d);
         col *= m;
@@ -628,6 +667,66 @@ class InsideScene {
       }`, {}));
     grid.rotation.x = -Math.PI / 2; grid.position.y = -2.6; this.scene.add(grid);
 
+    // ---------- 机架墙：两侧立柱框架（与卡片同节律，撑起隧道空间感） ----------
+    const rackMat = new THREE.MeshStandardMaterial({ color: 0x0d2418, roughness: 0.55, metalness: 0.35 });
+    const stripMat = new THREE.MeshBasicMaterial({ color: 0x1f8f55 });
+    const FRAMES = 9;
+    const racks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 6.4, 0.2), rackMat, FRAMES * 4);
+    const strips = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 5.2, 0.06), stripMat, FRAMES * 2);
+    const rd = new THREE.Object3D();
+    let ri = 0, si = 0;
+    for (let f = 0; f < FRAMES; f++) {
+      const z = -6 - f * 4.4;
+      for (const x of [-5.4, 5.4]) for (const dy of [-0.9, 0.9]) {
+        rd.position.set(x, dy, z); rd.updateMatrix(); racks.setMatrixAt(ri++, rd.matrix);
+      }
+      for (const x of [-5.05, 5.05]) {
+        rd.position.set(x, 0, z); rd.updateMatrix(); strips.setMatrixAt(si++, rd.matrix);
+      }
+    }
+    this.scene.add(racks, strips);
+
+    // ---------- 顶部线缆：三根沿隧道顶蜿蜒 ----------
+    const cableMat = new THREE.MeshStandardMaterial({ color: 0x103526, roughness: 0.5, metalness: 0.2 });
+    [[-1.6, 0.9], [0.2, 1.3], [1.7, 0.7]].forEach(([x, sag], i) => {
+      const pts = [];
+      for (let z = 8; z >= -34; z -= 4)
+        pts.push(new THREE.Vector3(x + Math.sin(z * 0.35 + i) * 0.35, 2.7 + Math.sin(z * 0.5 + i * 2) * sag * 0.5 - sag * 0.3, z));
+      this.scene.add(new THREE.Mesh(
+        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.035, 6), cableMat));
+    });
+
+    // ---------- 尽头核心光：隧道终端的信号源 ----------
+    const coreTex = makeCanvasTexture(256, 256, (ctx, c) => {
+      const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 6, c.width / 2, c.height / 2, c.width / 2);
+      g.addColorStop(0, 'rgba(120,255,190,1)');
+      g.addColorStop(0.35, 'rgba(40,220,130,.35)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+    });
+    this.core = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({
+      map: coreTex.tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.core.position.set(0, 0.4, -47);
+    this.scene.add(this.core);
+    const coreLight = new THREE.PointLight(0x39ff88, 40, 60, 1.6);
+    coreLight.position.set(0, 0.4, -42);
+    this.scene.add(coreLight);
+
+    // ---------- 浮游微粒：信号尘埃 ----------
+    const MD = 160, mpos = new Float32Array(MD * 3);
+    for (let i = 0; i < MD; i++) {
+      mpos[i * 3] = (Math.random() - 0.5) * 9;
+      mpos[i * 3 + 1] = Math.random() * 4 - 1.5;
+      mpos[i * 3 + 2] = 6 - Math.random() * 36;
+    }
+    const motesGeo = new THREE.BufferGeometry();
+    motesGeo.setAttribute('position', new THREE.BufferAttribute(mpos, 3));
+    this.motes = new THREE.Points(motesGeo, new THREE.PointsMaterial({
+      color: 0x53ff9a, size: 0.025, transparent: true, opacity: 0.5, depthWrite: false,
+    }));
+    this.scene.add(this.motes);
+
     // 学习卡片：两侧交错，随相机前进逐一掠过
     this.cards = cardTextures.map(({ tex }, i) => {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.44),
@@ -703,6 +802,11 @@ class InsideScene {
     this.revealMat.uniforms.uNext.value = nextTexture;
     this.revealMat.uniforms.uReveal.value = smoothstep(0.80, 0.95, p);
     this.fitRevealToCamera();
+    // 核心光呼吸 + 信号尘埃缓漂
+    if (!REDUCED) {
+      this.core.scale.setScalar(0.92 + Math.sin(t * 1.6) * 0.08);
+      this.motes.position.z = (t * 0.35) % 4.4;
+    }
 
     renderer.setRenderTarget(this.fbo);
     renderer.render(this.scene, this.camera);
@@ -802,12 +906,12 @@ const composeMat = mat(/* glsl */`
 
     col = mix(col, filmGrade(col, uv, uTime), uFilm); // 屏外：默片时代
 
-    // 屏内常驻遮罩（#contact 同款）：大圆角（角弧≈短边 30%）+ 窄边框（~3%）+ 遮罩外纯黑
+    // 屏内常驻遮罩（与 CRT 屏窗同一几何：穿屏时物理屏窗 → 渐变为视口遮罩，无框中框）
     if (uGlass * uGlassFlash > 0.001) {
       float g = uGlass * uGlassFlash;
       vec2 p = (suv - 0.5) * vec2(uAspect, 1.0);
-      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.032;
-      float d = sdRound(p, halfSize, 0.22);
+      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.028;
+      float d = sdRound(p, halfSize, 0.16);
       float insideMask = smoothstep(0.0, 0.010, -d);
       vec3 screenCol = col * (0.82 + 0.18 * smoothstep(0.0, 0.35, -d));
       float rim = smoothstep(0.04, 0.008, -d);
@@ -815,17 +919,10 @@ const composeMat = mat(/* glsl */`
       col = mix(col, mix(vec3(0.0), screenCol, insideMask), g);
     }
 
-    // 终章 contact 式页面遮罩：大圆角（角弧≈短边 30%）+ 窄边框（~2.8%）+ 遮罩外纯黑 + 边缘压暗
+    // 终章：不另起边框（同一遮罩系统）——只加重对比与微增凸面，作为"页尾"的分量
     if (uContact > 0.001) {
-      vec2 p = (suv - 0.5) * vec2(uAspect, 1.0);
-      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.028;
-      float d = sdRound(p, halfSize, 0.22);
-      float insideMask = smoothstep(0.0, 0.008, -d);
-      vec3 screenCol = col * (0.8 + 0.2 * smoothstep(0.0, 0.35, -d));
-      screenCol = pow(max(screenCol, 0.0), vec3(1.12)); // 其 pow≈1.36 档的收敛
-      float rim = smoothstep(0.028, 0.006, -d);
-      screenCol += rim * vec3(0.03, 0.05, 0.04);
-      col = mix(col, mix(vec3(0.0), screenCol, insideMask), uContact);
+      vec3 screenCol = pow(max(col, 0.0), vec3(mix(1.0, 1.14, uContact)));
+      col = mix(col, screenCol, uContact * 0.85);
     }
 
     // 扫描线/颗粒/暗角/穿幕闪断移至 final pass（bloom 之后、色调映射之后再上质感）
@@ -974,18 +1071,19 @@ function frame() {
   if (inRange(scenes[1], progress)) texBcur = scenes[1].render(state, texC);
   if (inRange(scenes[0], progress)) texA = scenes[0].render(state, texBcur);
 
-  // compose（采样/变形/遮罩 → 全分辨率帧）
+  // ---------- 错峰编排：任一时刻只发生一件事（体检结论：原 0.40–0.55 七效果同窗） ----------
   composeMat.uniforms.uSceneA.value = texA;
   composeMat.uniforms.uSceneB.value = texBcur;
+  // ① 0.34–0.46 黑白退色（在切换前完成，色彩先行）
+  composeMat.uniforms.uFilm.value = 1 - smoothstep(0.34, 0.46, progress);
+  // ② 0.47–0.49 场景切换（此刻屏幕恰满视口、内容=A屏纹理=B场景，天然无缝——无闪断）
   composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
-  // 默片→彩色：黑幕顶点完成换色，穿幕闪光即爆出色彩
-  composeMat.uniforms.uFilm.value = 1 - smoothstep(0.40, 0.49, progress);
-  // 屏内遮罩常驻：穿屏时快速收紧到位，之后保持（#contact 同款，不再一闪而过）
-  composeMat.uniforms.uGlass.value = smoothstep(0.46, 0.52, progress);
-  composeMat.uniforms.uGlassFlash.value = smoothstep(0.46, 0.50, progress);
-  // 终章：contact 式遮罩+变形渐入
+  // ③ 0.49–0.55 切换后才渐入屏内遮罩（沿用与 CRT 屏窗相同的几何）
+  composeMat.uniforms.uGlass.value = smoothstep(0.49, 0.55, progress);
+  composeMat.uniforms.uGlassFlash.value = smoothstep(0.49, 0.53, progress);
+  // ④ 终章只加对比（同遮罩系统，不再另起边框）
   composeMat.uniforms.uContact.value = smoothstep(0.86, 0.94, progress);
-  composeMat.uniforms.uAberr.value = 1.4 + uDipBoost(progress);
+  composeMat.uniforms.uAberr.value = 1.4;
   postQuad.material = composeMat;
   renderer.setRenderTarget(sceneRT);
   renderer.render(postScene, postCam);
@@ -1006,15 +1104,13 @@ function frame() {
     renderer.render(postScene, postCam);
   }
 
-  // final：辉光合成 + ACES + 扫描线/颗粒/暗角/穿幕闪 → 屏幕
+  // final：辉光合成 + ACES + 扫描线/颗粒/暗角 → 屏幕（闪断已删：切换本身无缝）
   postQuad.material = finalMat;
   finalMat.uniforms.uScene.value = sceneRT.texture;
   finalMat.uniforms.uBloom.value = CFG.bloom ? bloomA.texture : blackTex;
-  finalMat.uniforms.uBloomAmt.value = (CFG.bloom ? lerp(0.1, 0.55, smoothstep(0.44, 0.52, progress)) : 0)
-    + uDipBoost(progress) * 0.22; // 屏外辉光压到极低（防光斑），屏内才放开
-  finalMat.uniforms.uDip.value =
-    smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
-  finalMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
+  // ⑤ 0.49–0.60 切换后辉光才爬升（屏外保持极低）
+  finalMat.uniforms.uBloomAmt.value = CFG.bloom ? lerp(0.1, 0.55, smoothstep(0.49, 0.60, progress)) : 0;
+  finalMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.50, 0.62, progress) * (1 - smoothstep(0.86, 0.96, progress)));
   renderer.setRenderTarget(null);
   renderer.render(postScene, postCam);
 
@@ -1025,7 +1121,6 @@ function frame() {
   document.body.classList.toggle('inside', progress > 0.46); // DOM 覆盖层随穿屏恢复彩色
 }
 function inRange(s, p) { return p >= s.activeRange[0] && p <= s.activeRange[1]; }
-function uDipBoost(p) { return smoothstep(0.455, 0.475, p) * (1 - smoothstep(0.485, 0.505, p)) * 2; }
 frame();
 </script>
 </body>
