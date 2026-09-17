@@ -11,7 +11,7 @@
   html { scrollbar-width: none; -ms-overflow-style: none; }
   ::-webkit-scrollbar { display: none; width: 0; height: 0; }
   html, body { background: #000; }
-  body { font-family: "Courier New", ui-monospace, monospace; color: var(--green); }
+  body { font-family: "IBM Plex Mono", "DotGothic16", "Songti SC", "PingFang SC", ui-monospace, monospace; color: var(--green); }
   #scroll-space { height: 600vh; width: 1px; }
   #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
@@ -69,6 +69,9 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js" } }
 </script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dotgothic16@5/400.css">
 <script defer src="https://cdn.jsdelivr.net/npm/lenis@1.3.4/dist/lenis.min.js"></script>
 </head>
 <body>
@@ -156,7 +159,25 @@ renderer.debug.onShaderError = (gl, program, vs, fs) => {
   catch { window.showErr && showErr('SHADER ERR: (no log)'); }
 };
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const DPR = () => Math.min(devicePixelRatio || 1, REDUCED ? 1 : 2);
+
+/* ---------------- 设备分级：high / mid / low ---------------- */
+const TIER = (() => {
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const cores = navigator.hardwareConcurrency || 4;
+  if (REDUCED || coarse || cores <= 4) return 'low';
+  return cores >= 8 ? 'high' : 'mid';
+})();
+const CFG = {
+  high: { dpr: 2, fboScale: 0.9, bloom: true, dust: 340 },
+  mid: { dpr: 1.5, fboScale: 0.75, bloom: true, dust: 220 },
+  low: { dpr: 1, fboScale: 0.6, bloom: false, dust: 100 },
+}[TIER];
+const DPR = () => Math.min(devicePixelRatio || 1, CFG.dpr);
+window.__TIER = TIER; // 诊断：控制台可查当前设备档
+
+/* ---------------- GSAP 级缓动（等价实现，零依赖） ---------------- */
+const easeInOutQuart = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2);
+const expoOut = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
 
 /* ---------------- 滚动 ---------------- */
 let progress = 0;
@@ -189,12 +210,51 @@ function makeCanvasTexture(w, h, draw) {
   return { tex, repaint };
 }
 
+/* 字体就绪后重绘所有画布纹理（IBM Plex Mono / DotGothic16 替换回退字体） */
+const repaintFns = [];
+if (document.fonts?.ready) document.fonts.ready.then(() => repaintFns.forEach((f) => f()));
+
+/* ---------------- PBR 做旧：桌面木纹 ---------------- */
+const wood = makeCanvasTexture(512, 512, (ctx, c) => {
+  ctx.fillStyle = '#5e4b34'; ctx.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 150; i++) { // 纵向木纹
+    const x = Math.random() * c.width;
+    ctx.strokeStyle = `rgba(${42 + Math.random() * 28 | 0},${31 + Math.random() * 22 | 0},${19 + Math.random() * 14 | 0},${0.12 + Math.random() * 0.22})`;
+    ctx.lineWidth = 1 + Math.random() * 3;
+    ctx.beginPath(); ctx.moveTo(x, 0);
+    ctx.bezierCurveTo(x + 9 * Math.sin(i), c.height * 0.33, x - 7 * Math.sin(i * 1.7), c.height * 0.66, x + 4 * Math.sin(i * 0.6), c.height);
+    ctx.stroke();
+  }
+  for (let k = 0; k < 6; k++) { // 节疤
+    const x = Math.random() * c.width, y = Math.random() * c.height, r = 9 + Math.random() * 15;
+    const g = ctx.createRadialGradient(x, y, 1, x, y, r);
+    g.addColorStop(0, 'rgba(30,22,12,.5)'); g.addColorStop(1, 'rgba(30,22,12,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, 7); ctx.fill();
+  }
+});
+wood.tex.wrapS = wood.tex.wrapT = THREE.RepeatWrapping; wood.tex.repeat.set(2, 1);
+
+/* ---------------- PBR 做旧：壳体老化塑料（麻点 + 边角黄化） ---------------- */
+const shellSkin = makeCanvasTexture(256, 256, (ctx, c) => {
+  ctx.fillStyle = '#d8cba9'; ctx.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 2400; i++) {
+    ctx.fillStyle = `rgba(${148 + Math.random() * 58 | 0},${128 + Math.random() * 40 | 0},${88 + Math.random() * 30 | 0},${Math.random() * 0.09})`;
+    ctx.fillRect(Math.random() * c.width, Math.random() * c.height, 2, 2);
+  }
+  [[0, 0], [c.width, 0], [0, c.height], [c.width, c.height]].forEach(([x, y]) => {
+    const g = ctx.createRadialGradient(x, y, c.width * 0.2, x, y, c.width * 0.75);
+    g.addColorStop(0, 'rgba(122,94,44,.14)'); g.addColorStop(1, 'rgba(122,94,44,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+  });
+});
+shellSkin.tex.wrapS = shellSkin.tex.wrapT = THREE.RepeatWrapping;
+
 /* 开机自检屏（琥珀单色终端，中文 BIOS） */
 const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
   ctx.fillStyle = '#030200'; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.fillStyle = '#ffb000'; ctx.font = 'bold 52px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#ffb000'; ctx.font = 'bold 52px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText('IIIIIEI 系统', 48, 96);
-  ctx.font = '28px "Courier New", "Songti SC", "PingFang SC", monospace'; ctx.fillStyle = '#b97a00';
+  ctx.font = '28px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace'; ctx.fillStyle = '#b97a00';
   const lines = [
     'BIOS v1.0  (C) 2026 IIIIIEI',
     '',
@@ -207,6 +267,7 @@ const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
   lines.forEach((s, i) => ctx.fillText(s, 48, 180 + i * 46));
 });
 if (!REDUCED) setInterval(() => boot.repaint(Math.floor(Date.now() / 500) % 2 === 0), 500);
+repaintFns.push(() => boot.repaint(true));
 
 /* 学习卡片（终端绿，中文） */
 const STUDIES = [
@@ -220,25 +281,27 @@ const STUDIES = [
 const cardTextures = STUDIES.map(([title, sub]) => makeCanvasTexture(512, 320, (ctx, c) => {
   ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.strokeStyle = '#1d7a48'; ctx.lineWidth = 3; ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
-  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText(title, 34, 70);
-  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   sub.match(/.{1,15}/g)?.forEach((s, i) => ctx.fillText(s, 34, 130 + i * 36));
-  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText('iiiiiei // 公开管线的学习复刻', 34, c.height - 36);
 }));
+cardTextures.forEach((t) => repaintFns.push(() => t.repaint()));
 
 /* 终章大字 */
 const endTitle = makeCanvasTexture(1024, 512, (ctx, c) => {
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 96px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 96px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText('传输结束', c.width / 2, 210);
-  ctx.fillStyle = '#39ff88'; ctx.font = '30px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#39ff88'; ctx.font = '30px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText('这条管线现在属于 iiiiiei.com', c.width / 2, 300);
-  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "Courier New", "Songti SC", "PingFang SC", monospace';
+  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
   ctx.fillText('谢谢你一路滚过这台机器', c.width / 2, 370);
 });
+repaintFns.push(() => endTitle.repaint());
 
 /* 通用 ShaderMaterial 快捷方式（自带全屏 varying vUv 的默认顶点着色器） */
 const DEFAULT_VERT = /* glsl */`
@@ -265,14 +328,17 @@ class HeroScene {
 
     const M = (c, r = 0.6, o = {}) =>
       new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0.04, ...o });
-    const beige = M(0xd6c9a8, 0.55), beigeDark = M(0x9a8867, 0.75);
+    // 做旧材质：壳体贴老化塑料（麻点+黄化），桌面/桌腿贴木纹
+    const beige = M(0xffffff, 0.72, { map: shellSkin.tex, roughnessMap: shellSkin.tex });
+    const beigeDark = M(0x9a8867, 0.75);
+    const woodMat = M(0xffffff, 0.7, { map: wood.tex, roughnessMap: wood.tex });
 
     // ---------- 桌与地 ----------
-    const desk = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.34, 4.6), beigeDark);
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.34, 4.6), woodMat);
     desk.position.y = -0.17; desk.castShadow = desk.receiveShadow = true;
     this.scene.add(desk);
     [[-4.1], [4.1]].forEach(([x]) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.45, 3.2, 3.8), M(0x8a7857, 0.8));
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.45, 3.2, 3.8), woodMat);
       leg.position.set(x, -1.9, 0); leg.castShadow = true; this.scene.add(leg);
     });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(90, 90), M(0x151009, 1));
@@ -456,7 +522,7 @@ class HeroScene {
     this.screenGlowLight.position.set(0, 1.3, 1.5); this.scene.add(this.screenGlowLight);
 
     // ---------- 光锥浮尘 ----------
-    const N = 340, dpos = new Float32Array(N * 3);
+    const N = CFG.dust, dpos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
       dpos[i * 3] = (Math.random() - 0.5) * 6.5;
       dpos[i * 3 + 1] = Math.random() * 5;
@@ -495,7 +561,7 @@ class HeroScene {
     this.screenMat.uniforms.uMix.value = smoothstep(0.10, 0.36, p);
     this.screenMat.uniforms.uTime.value = t;
 
-    const fly = smoothstep(0.02, 0.44, p);
+    const fly = easeInOutQuart(smoothstep(0.02, 0.44, p)); // 有分量的推进（quart 曲线）
 
     // CRT 开机序列：闪两下再稳（页面加载后前 0.6s）
     const boot0 = t < 0.12 ? 2.2 : t < 0.22 ? 0.15 : t < 0.34 ? 1.3 : t < 0.5 ? 0.55 : 1.0;
@@ -561,6 +627,7 @@ class InsideScene {
       m.position.set(side * 3.1, 0.4 + (i % 3) * 0.5, -4 - i * 4.4);
       m.rotation.y = side * -0.5;
       m.userData.phase = i * 1.7;
+      m.userData.baseY = 0.4 + (i % 3) * 0.5;
       this.scene.add(m);
       return m;
     });
@@ -568,9 +635,10 @@ class InsideScene {
     // 次元横幅
     const banner = makeCanvasTexture(1024, 128, (ctx, c) => {
       ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "Courier New", "Songti SC", "PingFang SC", monospace';
+      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "IBM Plex Mono", "DotGothic16", "Songti SC", monospace';
       ctx.textAlign = 'center'; ctx.fillText('// 屏内信号 — 六项研究', c.width / 2, 82);
     });
+    repaintFns.push(() => banner.repaint());
     this.banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.75),
       new THREE.MeshBasicMaterial({ map: banner.tex, transparent: true }));
     this.banner.position.set(0, 2.4, -1.5); this.scene.add(this.banner);
@@ -607,7 +675,7 @@ class InsideScene {
 
   render(state, nextTexture) {
     const p = state.progress, t = state.time;
-    const fly = smoothstep(0.47, 0.86, p);
+    const fly = expoOut(smoothstep(0.47, 0.86, p)); // 隧道 dolly 减速落定
     this.camera.position.set(
       mouse.sx * 0.6,
       0.6 + mouse.sy * 0.25,
@@ -616,7 +684,12 @@ class InsideScene {
     this.camera.lookAt(mouse.sx * 1.2, 0.6 + mouse.sy * 0.4, this.camera.position.z - 8);
     this.cards.forEach((c) => {
       c.lookAt(this.camera.position);
-      if (!REDUCED) c.position.y += Math.sin(t * 0.9 + c.userData.phase) * 0.0016;
+      // 出场：相机临近时 expoOut 落位（有重量的浮现，替代原地静挂）
+      const ahead = this.camera.position.z - c.position.z; // 前方为正
+      const app = expoOut(clamp(1 - ahead / 10, 0, 1));
+      c.scale.setScalar(0.55 + 0.45 * app);
+      c.position.y = c.userData.baseY + (1 - app) * 0.9
+        + (REDUCED ? 0 : Math.sin(t * 0.9 + c.userData.phase) * 0.12);
     });
     this.revealMat.uniforms.uNext.value = nextTexture;
     this.revealMat.uniforms.uReveal.value = smoothstep(0.80, 0.95, p);
@@ -674,7 +747,7 @@ class EndScene {
 const composeMat = mat(/* glsl */`
   uniform sampler2D uSceneA, uSceneB;
   uniform vec2 uRes;
-  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm, uGlass, uGlassFlash, uContact, uAspect;
+  uniform float uSwap, uTime, uAberr, uFilm, uGlass, uGlassFlash, uContact, uAspect;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
   /* 屏外世界：卓别林黑白胶片。颗粒量级对齐 shader.se 实测（极细、几乎察觉不到） */
@@ -747,27 +820,77 @@ const composeMat = mat(/* glsl */`
       col = mix(col, mix(vec3(0.0), screenCol, insideMask), uContact);
     }
 
-    // 扫描线（屏幕内增强）
-    float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(suv.y * uRes.y * 2.6));
-    col *= scan;
-    // grain
-    col += (hash(uv * (uTime + 1.0)) - 0.5) * uGrain;
-    // vignette
-    vec2 d = uv - 0.5;
-    col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
-    // 穿幕瞬间的快速软闪（不再是黑屏割裂：窗口窄、深度浅）
-    col *= 1.0 - uDip;
+    // 扫描线/颗粒/暗角/穿幕闪断移至 final pass（bloom 之后、色调映射之后再上质感）
     gl_FragColor = vec4(col, 1.0);
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
-  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 }, uContact: { value: 0 },
-  uGrain: { value: 0.05 }, uAberr: { value: 1.6 }, uScan: { value: 0.1 }, uVig: { value: 0.75 },
-  uAspect: { value: 1 },
+  uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 }, uContact: { value: 0 },
+  uAberr: { value: 1.6 }, uAspect: { value: 1 },
 });
+
+/* ---------- bloom 链：亮部提取（1/4 分辨率）→ 水平/垂直高斯模糊 ---------- */
+const brightMat = mat(/* glsl */`
+  uniform sampler2D uScene; uniform float uThresh;
+  varying vec2 vUv;
+  void main() {
+    vec3 c = texture2D(uScene, vUv).rgb;
+    float l = max(c.r, max(c.g, c.b));
+    float k = smoothstep(uThresh, uThresh + 0.25, l);
+    gl_FragColor = vec4(c * k, 1.0);
+  }`, { uScene: { value: null }, uThresh: { value: 0.72 } });
+
+const blurMat = mat(/* glsl */`
+  uniform sampler2D uTex; uniform vec2 uDir; // uDir 已含纹素尺寸
+  varying vec2 vUv;
+  void main() {
+    vec3 s = texture2D(uTex, vUv).rgb * 0.227027;
+    float w[4]; w[0] = 0.1945946; w[1] = 0.1216216; w[2] = 0.054054; w[3] = 0.016216;
+    for (int i = 1; i < 5; i++) {
+      s += texture2D(uTex, vUv + uDir * float(i)).rgb * w[i - 1];
+      s += texture2D(uTex, vUv - uDir * float(i)).rgb * w[i - 1];
+    }
+    gl_FragColor = vec4(s, 1.0);
+  }`, { uTex: { value: null }, uDir: { value: new THREE.Vector2() } });
+
+/* ---------- final：辉光合成 + ACES 色调映射 + 扫描线/颗粒/暗角/穿幕闪 ---------- */
+const finalMat = mat(/* glsl */`
+  uniform sampler2D uScene, uBloom;
+  uniform vec2 uRes;
+  uniform float uBloomAmt, uDip, uScan, uGrain, uVig, uTime;
+  varying vec2 vUv;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  vec3 aces(vec3 x) { // Narkowicz ACES 近似：高光有滚降，不再死白
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+  }
+  void main() {
+    vec3 col = texture2D(uScene, vUv).rgb + texture2D(uBloom, vUv).rgb * uBloomAmt;
+    col = aces(col * 1.06); // 轻提曝再压曲线
+    float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(vUv.y * uRes.y * 2.6));
+    col *= scan;
+    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain;
+    vec2 d = vUv - 0.5;
+    col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
+    col *= 1.0 - uDip;
+    gl_FragColor = vec4(col, 1.0);
+  }`, {
+  uScene: { value: null }, uBloom: { value: null },
+  uBloomAmt: { value: 0 }, uDip: { value: 0 }, uScan: { value: 0.1 }, uGrain: { value: 0.035 }, uVig: { value: 0.75 },
+});
+
 const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
 postCam.position.z = 5; // 平面落在视锥中部，远离 near/far 边界
-postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composeMat));
+const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composeMat);
+postScene.add(postQuad);
+
+/* 后期用的渲染目标：全分辨率场景帧 + 两张 1/4 分辨率 bloom 中间件 */
+function makeRT() {
+  return new THREE.WebGLRenderTarget(1, 1, {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false,
+  });
+}
+const sceneRT = makeRT(), bloomA = makeRT(), bloomB = makeRT();
+const blackTex = makeCanvasTexture(2, 2, (ctx, c) => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 2, 2); }).tex;
 
 /* ============================================================
    组装：场景链 + 主循环
@@ -785,13 +908,17 @@ function resize() {
   const w = innerWidth, h = innerHeight, dpr = DPR();
   renderer.setPixelRatio(dpr);
   renderer.setSize(w, h);
+  const fw = Math.floor(w * dpr * CFG.fboScale), fh = Math.floor(h * dpr * CFG.fboScale);
   scenes.forEach((s) => {
     s.camera.aspect = w / h; s.camera.updateProjectionMatrix();
-    s.fbo.setSize(Math.floor(w * dpr * 0.9), Math.floor(h * dpr * 0.9)); // 稍降采样换性能
+    s.fbo.setSize(fw, fh); // 按设备分档降采样换性能
   });
   // uRes 以 FBO 像素为准：gl_FragCoord 类效果（揭示层）在 FBO 内采样才会对齐
-  shared.uRes.value.set(Math.floor(w * dpr * 0.9), Math.floor(h * dpr * 0.9));
+  shared.uRes.value.set(fw, fh);
   composeMat.uniforms.uAspect.value = w / h; // 玻璃圆角边框需要宽高比
+  sceneRT.setSize(Math.floor(w * dpr), Math.floor(h * dpr));       // 后期全分辨率帧
+  bloomA.setSize(Math.max(2, Math.floor(w * dpr / 4)), Math.max(2, Math.floor(h * dpr / 4)));
+  bloomB.setSize(bloomA.width, bloomA.height);                     // bloom 1/4 分辨率
 }
 addEventListener('resize', resize);
 resize();
@@ -837,7 +964,7 @@ function frame() {
   if (inRange(scenes[1], progress)) texBcur = scenes[1].render(state, texC);
   if (inRange(scenes[0], progress)) texA = scenes[0].render(state, texBcur);
 
-  // compose
+  // compose（采样/变形/遮罩 → 全分辨率帧）
   composeMat.uniforms.uSceneA.value = texA;
   composeMat.uniforms.uSceneB.value = texBcur;
   composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
@@ -849,11 +976,37 @@ function frame() {
     smoothstep(0.46, 0.50, progress) * (1 - smoothstep(0.52, 0.60, progress));
   // 终章：contact 式遮罩+变形渐入
   composeMat.uniforms.uContact.value = smoothstep(0.86, 0.94, progress);
-  // 穿幕瞬间只留一道极浅的软闪（参考站全程连续，不留黑幕）
-  composeMat.uniforms.uDip.value =
-    smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
-  composeMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
   composeMat.uniforms.uAberr.value = 1.4 + uDipBoost(progress);
+  postQuad.material = composeMat;
+  renderer.setRenderTarget(sceneRT);
+  renderer.render(postScene, postCam);
+
+  // bloom：亮部提取（1/4 res）→ H 模糊 → V 模糊（低端档跳过）
+  if (CFG.bloom) {
+    postQuad.material = brightMat;
+    brightMat.uniforms.uScene.value = sceneRT.texture;
+    renderer.setRenderTarget(bloomA);
+    renderer.render(postScene, postCam);
+    postQuad.material = blurMat;
+    const tx = 1 / bloomA.width, ty = 1 / bloomA.height;
+    blurMat.uniforms.uTex.value = bloomA.texture; blurMat.uniforms.uDir.value.set(tx, 0);
+    renderer.setRenderTarget(bloomB);
+    renderer.render(postScene, postCam);
+    blurMat.uniforms.uTex.value = bloomB.texture; blurMat.uniforms.uDir.value.set(0, ty);
+    renderer.setRenderTarget(bloomA);
+    renderer.render(postScene, postCam);
+  }
+
+  // final：辉光合成 + ACES + 扫描线/颗粒/暗角/穿幕闪 → 屏幕
+  postQuad.material = finalMat;
+  finalMat.uniforms.uScene.value = sceneRT.texture;
+  finalMat.uniforms.uBloom.value = CFG.bloom ? bloomA.texture : blackTex;
+  finalMat.uniforms.uBloomAmt.value = (CFG.bloom ? lerp(0.22, 0.55, smoothstep(0.44, 0.52, progress)) : 0)
+    + uDipBoost(progress) * 0.22; // 穿幕瞬间辉光助推一闪
+  finalMat.uniforms.uDip.value =
+    smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
+  finalMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
+  renderer.setRenderTarget(null);
   renderer.render(postScene, postCam);
 
   // DOM 状态

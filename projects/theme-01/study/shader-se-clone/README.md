@@ -55,7 +55,20 @@ Filip Kantedal 与 Simon Hedlund（shader.se 创始人）在 Codrops 发表过�
 
 - INSIDE 段卡片构图与横幅曝光时机（相机 dolly 曲线调校）
 - 穿幕闪断（黑幕 dip）的时机与节奏
-- 移动端性能分级（目前仅钳制 DPR）
+- ~~移动端性能分级~~ → **v7 已做**：high/mid/low 三档（DPR 2/1.5/1、FBO 0.9/0.75/0.6、
+  浮尘 340/220/100、低端关 bloom）；`window.__TIER` 可查档位
+
+## v7 打磨包（2026-09-17，"全部应用"）
+
+- **真 bloom + ACES**：后期链拆为 compose（采样/变形/遮罩）→ 亮部提取（1/4 分辨率，
+  阈值 0.72）→ H/V 高斯模糊 → final（辉光合成 + Narkowicz ACES 色调映射 + 扫描线/
+  颗粒/暗角/穿幕闪）。高光有滚降不再死白；穿幕瞬间辉光助推一闪（对齐其 `bloomBoost` 思想）。
+- **PBR 做旧**：程序化木纹（纹线+节疤，兼 roughnessMap）用于桌面/桌腿；老化塑料
+  （麻点+四角黄化）用于显示器壳体。
+- **字体系统**：IBM Plex Mono（拉丁）+ DotGothic16（像素中文）经 jsdelivr/fontsource；
+  DOM 与全部画布纹理统一，`document.fonts.ready` 后自动重绘。
+- **GSAP 级缓动（零依赖等价实现）**：相机推进 easeInOutQuart、隧道 dolly expoOut、
+  学习卡片临近 expoOut 浮现（缩放+落位）。
 
 ## 原站的"全局触点"（2026-09-16 高频连拍实测补记）
 
