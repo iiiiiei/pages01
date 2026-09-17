@@ -328,10 +328,10 @@ class HeroScene {
 
     const M = (c, r = 0.6, o = {}) =>
       new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: 0.04, ...o });
-    // 做旧材质：壳体贴老化塑料（麻点+黄化），桌面/桌腿贴木纹
-    const beige = M(0xffffff, 0.72, { map: shellSkin.tex, roughnessMap: shellSkin.tex });
+    // 做旧材质：贴图只做颜色（map）——粗糙度贴图会把暗纹变成镜面亮斑，不用
+    const beige = M(0xffffff, 0.68, { map: shellSkin.tex });
     const beigeDark = M(0x9a8867, 0.75);
-    const woodMat = M(0xffffff, 0.7, { map: wood.tex, roughnessMap: wood.tex });
+    const woodMat = M(0xffffff, 0.78, { map: wood.tex });
 
     // ---------- 桌与地 ----------
     const desk = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.34, 4.6), woodMat);
@@ -399,19 +399,28 @@ class HeroScene {
       varying vec2 vUv;
       vec2 barrel(vec2 uv) {
         vec2 c = uv * 2.0 - 1.0;
-        c *= 1.0 + 0.11 * dot(c, c);
+        c *= 1.0 + 0.16 * dot(c, c); // 凸面加强：肉眼可见的弧度
         return c * 0.5 + 0.5;
+      }
+      float sdRound(vec2 p, vec2 b, float r) {
+        vec2 q = abs(p) - b + r;
+        return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
       }
       void main() {
         vec2 uv = barrel(vUv);
         vec3 boot = texture2D(uBoot, uv).rgb;
         vec3 next = texture2D(uNext, uv).rgb;
         vec3 col = mix(boot, next, uMix);
+        // 圆角玻璃窗遮罩 + 边缘压暗（参考站屏幕内容同款：内容裁在弧面圆角窗里）
+        float d = sdRound(vUv - 0.5, vec2(0.5) - 0.022, 0.11);
+        float m = smoothstep(0.0, 0.012, -d);
+        col *= 0.78 + 0.22 * smoothstep(0.0, 0.3, -d);
+        col *= m;
         // 扫描线 + 微闪烁 + 边角暗影（CRT 质感三件套）
         float scan = 0.82 + 0.18 * sin(uv.y * 420.0);
         float flick = 0.97 + 0.03 * sin(uTime * 31.0);
-        vec2 d = uv - 0.5;
-        float vig = smoothstep(0.85, 0.35, length(d));
+        vec2 dd = uv - 0.5;
+        float vig = smoothstep(0.85, 0.35, length(dd));
         gl_FragColor = vec4(col * scan * flick * vig * uPower, 1.0);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       }`, {
@@ -750,11 +759,12 @@ const composeMat = mat(/* glsl */`
   uniform float uSwap, uTime, uAberr, uFilm, uGlass, uGlassFlash, uContact, uAspect;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-  /* 屏外世界：卓别林黑白胶片。颗粒量级对齐 shader.se 实测（极细、几乎察觉不到） */
+  /* 屏外世界：卓别林黑白胶片。颗粒按亮度遮罩（参考站做法：亮部才有颗粒），零抖动 */
   vec3 filmGrade(vec3 c, vec2 uv, float t) {
     float l = dot(c, vec3(0.299, 0.587, 0.114));
-    l = clamp((l - 0.5) * 1.22 + 0.48, 0.0, 1.0);
-    l += (hash(uv * uRes * 1.6 + floor(t * 24.0) * 7.3) - 0.5) * 0.05; // 极细颗粒（参考站量级）
+    l = clamp((l - 0.5) * 1.12 + 0.49, 0.0, 1.0); // 柔和对比，保留暗部细节
+    l += (hash(uv * uRes * 1.6 + floor(t * 24.0) * 7.3) - 0.5)
+       * (0.012 + 0.05 * smoothstep(0.45, 0.95, l)); // 暗部近零、亮部参考站量级
     float col = floor(uv.x * 210.0);
     float scr = step(0.9975, hash(vec2(col, floor(t * 3.0))));         // 偶尔一根划痕
     l += scr * 0.14 * hash(vec2(col, floor(uv.y * 50.0) + floor(t * 24.0)));
@@ -774,10 +784,9 @@ const composeMat = mat(/* glsl */`
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
   }
   void main() {
-    // 片门抖动：收得几乎不可察（原 0.0024 太晃）
-    vec2 uv = vUv + (vec2(hash(vec2(floor(uTime * 14.0), 1.0)),
-                          hash(vec2(floor(uTime * 14.0), 2.0))) - 0.5) * 0.0007 * uFilm;
-    // 屏内：与参考站一致——全出血、近乎平面。凸面只在穿屏瞬间一闪（0.47→0.56 快进快出）
+    // 参考站零抖动：不做片门位移
+    vec2 uv = vUv;
+    // 屏内：凸面 + 大圆角窄边遮罩常驻（#contact 同款），穿屏时快速收紧到位
     vec2 suv = mix(uv, lensBarrel(uv, 0.14), uGlass * uGlassFlash);
     // 终章（contact 式页面）：桶形外扩 + 大圆角窄边遮罩（参考站 #contact 实测形态）
     suv = mix(suv, lensBarrel(suv, 0.13), uContact);
@@ -793,18 +802,17 @@ const composeMat = mat(/* glsl */`
 
     col = mix(col, filmGrade(col, uv, uTime), uFilm); // 屏外：默片时代
 
-    // 穿屏一瞬的"玻璃质感"快闪：圆角边框 + 边缘压暗只在这时出现（参考站的圆角属过渡件，非常驻）
+    // 屏内常驻遮罩（#contact 同款）：大圆角（角弧≈短边 30%）+ 窄边框（~3%）+ 遮罩外纯黑
     if (uGlass * uGlassFlash > 0.001) {
       float g = uGlass * uGlassFlash;
       vec2 p = (suv - 0.5) * vec2(uAspect, 1.0);
-      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.07;
-      float d = sdRound(p, halfSize, 0.18);
-      float insideMask = smoothstep(0.0, 0.012, -d);
-      vec3 screenCol = col * (0.78 + 0.22 * smoothstep(0.0, 0.38, -d));
-      float rim = smoothstep(0.045, 0.008, -d);
-      screenCol += rim * vec3(0.04, 0.09, 0.06);
-      vec3 bez = vec3(0.016, 0.015, 0.019);
-      col = mix(col, mix(bez, screenCol, insideMask), g);
+      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.032;
+      float d = sdRound(p, halfSize, 0.22);
+      float insideMask = smoothstep(0.0, 0.010, -d);
+      vec3 screenCol = col * (0.82 + 0.18 * smoothstep(0.0, 0.35, -d));
+      float rim = smoothstep(0.04, 0.008, -d);
+      screenCol += rim * vec3(0.03, 0.06, 0.05);
+      col = mix(col, mix(vec3(0.0), screenCol, insideMask), g);
     }
 
     // 终章 contact 式页面遮罩：大圆角（角弧≈短边 30%）+ 窄边框（~2.8%）+ 遮罩外纯黑 + 边缘压暗
@@ -867,7 +875,9 @@ const finalMat = mat(/* glsl */`
     col = aces(col * 1.06); // 轻提曝再压曲线
     float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(vUv.y * uRes.y * 2.6));
     col *= scan;
-    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain;
+    // 颗粒按亮度遮罩：暗部近零（参考站做法，避免暗部噪点成"脏"）
+    float lum = max(col.r, max(col.g, col.b));
+    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain * (0.25 + 0.75 * smoothstep(0.25, 0.9, lum));
     vec2 d = vUv - 0.5;
     col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
     col *= 1.0 - uDip;
@@ -970,10 +980,9 @@ function frame() {
   composeMat.uniforms.uSwap.value = smoothstep(0.47, 0.49, progress);
   // 默片→彩色：黑幕顶点完成换色，穿幕闪光即爆出色彩
   composeMat.uniforms.uFilm.value = 1 - smoothstep(0.40, 0.49, progress);
-  // 屏内与参考站对齐：全出血、近乎平面。玻璃感只作为穿屏一瞬的快闪（0.46→0.60 快进快出）
+  // 屏内遮罩常驻：穿屏时快速收紧到位，之后保持（#contact 同款，不再一闪而过）
   composeMat.uniforms.uGlass.value = smoothstep(0.46, 0.52, progress);
-  composeMat.uniforms.uGlassFlash.value =
-    smoothstep(0.46, 0.50, progress) * (1 - smoothstep(0.52, 0.60, progress));
+  composeMat.uniforms.uGlassFlash.value = smoothstep(0.46, 0.50, progress);
   // 终章：contact 式遮罩+变形渐入
   composeMat.uniforms.uContact.value = smoothstep(0.86, 0.94, progress);
   composeMat.uniforms.uAberr.value = 1.4 + uDipBoost(progress);
@@ -1001,8 +1010,8 @@ function frame() {
   postQuad.material = finalMat;
   finalMat.uniforms.uScene.value = sceneRT.texture;
   finalMat.uniforms.uBloom.value = CFG.bloom ? bloomA.texture : blackTex;
-  finalMat.uniforms.uBloomAmt.value = (CFG.bloom ? lerp(0.22, 0.55, smoothstep(0.44, 0.52, progress)) : 0)
-    + uDipBoost(progress) * 0.22; // 穿幕瞬间辉光助推一闪
+  finalMat.uniforms.uBloomAmt.value = (CFG.bloom ? lerp(0.1, 0.55, smoothstep(0.44, 0.52, progress)) : 0)
+    + uDipBoost(progress) * 0.22; // 屏外辉光压到极低（防光斑），屏内才放开
   finalMat.uniforms.uDip.value =
     smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
   finalMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.45, 0.55, progress) * (1 - smoothstep(0.86, 0.96, progress)));
