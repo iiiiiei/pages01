@@ -320,11 +320,11 @@ class HeroScene {
     this.led = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0x6cff9a }));
     this.led.position.set(1.0, -0.8, 0.705); crt.add(this.led);
-    // 底座：转轴颈 + 圆盘脚
+    // 底座：转轴颈 + 矩形矮台（旧版圆盘脚是"飞碟"观感来源之一，已换）
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.21, 0.24, 12), M(0xb4a583, 0.5));
     neck.position.y = -1.18; crt.add(neck);
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.95, 0.1, 24), M(0xa89878, 0.55));
-    foot.position.y = -1.33; foot.castShadow = true; crt.add(foot);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.12, 1.2), M(0xa89878, 0.55));
+    foot.position.y = -1.35; foot.castShadow = true; crt.add(foot);
 
     // 屏幕（次元门，1.85×1.4 与 fitCameraToScreen 对齐）
     this.screenMat = mat(/* glsl */`
@@ -354,36 +354,70 @@ class HeroScene {
     this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 1.4), this.screenMat);
     this.screen.position.set(0, 0.03, 0.703); crt.add(this.screen);
 
-    // 屏幕辉光面片（additive 柔光，屏幕"溢出"感）
-    const glowTex = makeCanvasTexture(256, 256, (ctx, c) => {
-      const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 8, c.width / 2, c.height / 2, c.width / 2);
-      g.addColorStop(0, 'rgba(255,224,160,0.95)');
-      g.addColorStop(0.45, 'rgba(255,176,90,0.28)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
-    });
-    this.glow = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.5), new THREE.MeshBasicMaterial({
-      map: glowTex.tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
-    this.glow.position.set(0, 0.03, 0.74); crt.add(this.glow);
+    // 屏幕辉光：只用 PointLight 给桌面/壳体照明，不再放 additive 面片
+    // （旧版径向渐变面片叠在圆形底座上会形成一个随鼠标/呼吸脉动的"飞碟"亮斑——已移除）
 
     crt.position.set(0, 1.28, -0.35);
     this.scene.add(crt);
 
-    // ---------- 键盘：斜面底座 + 70 键帽 InstancedMesh ----------
+    // ---------- 键盘（拟真版）：阶梯宽窄布局 + 双色键帽 + 微倾角 + 指示灯 + 连接线 ----------
     const kbd = new THREE.Group();
-    const kbdBase = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.09, 0.68), M(0xcbbd9c, 0.55));
-    kbdBase.castShadow = true; kbd.add(kbdBase);
-    const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(0.105, 0.034, 0.1), M(0xbfb08d, 0.65), 70);
-    const dummy = new THREE.Object3D();
-    let ki = 0;
-    for (let row = 0; row < 5; row++) for (let col = 0; col < 14; col++) {
-      dummy.position.set(-0.81 + col * 0.125, 0.062, -0.23 + row * 0.115);
-      dummy.updateMatrix(); keys.setMatrixAt(ki++, dummy.matrix);
-    }
+    const kbdBase = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.07, 0.72), M(0xc4b48f, 0.55));
+    kbdBase.position.y = 0.035; kbdBase.castShadow = true; kbd.add(kbdBase);
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.075, 0.2), M(0xb7a67f, 0.6));
+    riser.position.set(0, 0.07, -0.26); riser.castShadow = true; kbd.add(riser);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.02, 0.66), M(0x5a5040, 0.7));
+    plate.position.y = 0.075; kbd.add(plate); // 深色底板，露出键缝
+    // 真实键盘布局：每行键宽（单位=键距），首尾/功能行为修饰键配色
+    const U = 0.125;
+    const ROWS = [
+      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      [1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5],
+      [1.7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.3],
+      [2.1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.9],
+      [1.3, 1.2, 1.2, 1.2, 4.4, 1.2, 1.2, 1.3],
+    ];
+    const keyList = [];
+    ROWS.forEach((row, r) => {
+      let x = -row.reduce((a, b) => a + b, 0) / 2;
+      row.forEach((w, c) => {
+        keyList.push({
+          x: x + w / 2, z: -0.24 + r * 0.115, w: w * U - 0.012,
+          mod: r === 0 || r === 4 || c === 0 || c === row.length - 1,
+          jit: Math.sin(r * 31.7 + c * 17.3), // 稳定伪随机：键帽微倾/微色差
+        });
+        x += w;
+      });
+    });
+    const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.038, 0.1),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0.03 }), keyList.length);
+    const dummy = new THREE.Object3D(), keyCol = new THREE.Color();
+    keyList.forEach((k, i) => {
+      dummy.position.set(k.x, 0.104, k.z);
+      dummy.scale.set(k.w, 1, 1);
+      dummy.rotation.set(0.03 + Math.abs(k.jit) * 0.012, k.jit * 0.014, 0);
+      dummy.updateMatrix(); keys.setMatrixAt(i, dummy.matrix);
+      keys.setColorAt(i, keyCol.setHex(k.mod ? 0x8f7f60 : 0xd9cdaa).offsetHSL(0, 0, k.jit * 0.008));
+    });
+    keys.instanceColor.needsUpdate = true;
     keys.castShadow = true; kbd.add(keys);
-    kbd.position.set(0.15, 0.05, 1.75); kbd.rotation.x = -0.07;
+    // 指示灯 ×3（右上：绿/琥珀/红）
+    [[-0.02, 0x6cff9a], [-0.07, 0xffb000], [-0.12, 0xff5a4a]].forEach(([dx, hex]) => {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.012, 0.016),
+        new THREE.MeshBasicMaterial({ color: hex }));
+      lamp.position.set(0.82 + dx, 0.118, -0.3); kbd.add(lamp);
+    });
+    kbd.position.set(0.15, 0.02, 1.75); kbd.rotation.x = -0.085;
     this.scene.add(kbd);
+    // 连接线：键盘后沿 → 桌面绕行 → 显示器右下
+    const cable = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0.35, 0.1, 1.4),
+        new THREE.Vector3(0.95, 0.05, 1.75),
+        new THREE.Vector3(1.35, 0.28, 1.05),
+        new THREE.Vector3(1.1, 0.45, 0.5),
+      ]), 28, 0.017, 8), M(0x2b2b30, 0.45));
+    cable.castShadow = true; this.scene.add(cable);
 
     // ---------- 80s 静物：鼠标 / 软盘×2 / 报表堆 / 马克杯 ----------
     const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.055, 0.26), beige);
@@ -471,8 +505,6 @@ class HeroScene {
     const near = 1 - Math.min(1, Math.hypot(mouse.sx, mouse.sy));
     this.screenGlowLight.intensity = (9 + near * 12) * this.screenMat.uniforms.uPower.value;
     this.screenGlowLight.color.setHex(fly > 0.45 ? 0x53ff9a : 0xffb000);
-    // 屏幕溢光：低亮度、稳态（曾因过亮+频闪像"直升机螺旋桨"）
-    this.glow.material.opacity = 0.22 * this.screenMat.uniforms.uPower.value * (0.7 + 0.3 * near) * (1 - fly * 0.35);
     this.led.material.color.setHex(this.screenMat.uniforms.uPower.value > 0.8 ? 0x6cff9a : 0x1d4a2e);
 
     // 浮尘缓慢漂移
@@ -642,7 +674,7 @@ class EndScene {
 const composeMat = mat(/* glsl */`
   uniform sampler2D uSceneA, uSceneB;
   uniform vec2 uRes;
-  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm, uGlass, uGlassFlash, uAspect;
+  uniform float uDip, uSwap, uTime, uGrain, uAberr, uScan, uVig, uFilm, uGlass, uGlassFlash, uContact, uAspect;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
   /* 屏外世界：卓别林黑白胶片。颗粒量级对齐 shader.se 实测（极细、几乎察觉不到） */
@@ -674,6 +706,8 @@ const composeMat = mat(/* glsl */`
                           hash(vec2(floor(uTime * 14.0), 2.0))) - 0.5) * 0.0007 * uFilm;
     // 屏内：与参考站一致——全出血、近乎平面。凸面只在穿屏瞬间一闪（0.47→0.56 快进快出）
     vec2 suv = mix(uv, lensBarrel(uv, 0.14), uGlass * uGlassFlash);
+    // 终章（contact 式页面）：桶形外扩 + 大圆角窄边遮罩（参考站 #contact 实测形态）
+    suv = mix(suv, lensBarrel(suv, 0.13), uContact);
 
     vec3 a = texture2D(uSceneA, suv).rgb;
     vec3 b = texture2D(uSceneB, suv).rgb;
@@ -700,6 +734,19 @@ const composeMat = mat(/* glsl */`
       col = mix(col, mix(bez, screenCol, insideMask), g);
     }
 
+    // 终章 contact 式页面遮罩：大圆角（角弧≈短边 30%）+ 窄边框（~2.8%）+ 遮罩外纯黑 + 边缘压暗
+    if (uContact > 0.001) {
+      vec2 p = (suv - 0.5) * vec2(uAspect, 1.0);
+      vec2 halfSize = vec2(uAspect, 1.0) * 0.5 - 0.028;
+      float d = sdRound(p, halfSize, 0.22);
+      float insideMask = smoothstep(0.0, 0.008, -d);
+      vec3 screenCol = col * (0.8 + 0.2 * smoothstep(0.0, 0.35, -d));
+      screenCol = pow(max(screenCol, 0.0), vec3(1.12)); // 其 pow≈1.36 档的收敛
+      float rim = smoothstep(0.028, 0.006, -d);
+      screenCol += rim * vec3(0.03, 0.05, 0.04);
+      col = mix(col, mix(vec3(0.0), screenCol, insideMask), uContact);
+    }
+
     // 扫描线（屏幕内增强）
     float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(suv.y * uRes.y * 2.6));
     col *= scan;
@@ -713,7 +760,7 @@ const composeMat = mat(/* glsl */`
     gl_FragColor = vec4(col, 1.0);
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
-  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 },
+  uDip: { value: 0 }, uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 }, uContact: { value: 0 },
   uGrain: { value: 0.05 }, uAberr: { value: 1.6 }, uScan: { value: 0.1 }, uVig: { value: 0.75 },
   uAspect: { value: 1 },
 });
@@ -800,6 +847,8 @@ function frame() {
   composeMat.uniforms.uGlass.value = smoothstep(0.46, 0.52, progress);
   composeMat.uniforms.uGlassFlash.value =
     smoothstep(0.46, 0.50, progress) * (1 - smoothstep(0.52, 0.60, progress));
+  // 终章：contact 式遮罩+变形渐入
+  composeMat.uniforms.uContact.value = smoothstep(0.86, 0.94, progress);
   // 穿幕瞬间只留一道极浅的软闪（参考站全程连续，不留黑幕）
   composeMat.uniforms.uDip.value =
     smoothstep(0.455, 0.475, progress) * (1 - smoothstep(0.485, 0.505, progress)) * 0.3;
