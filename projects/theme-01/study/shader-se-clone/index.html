@@ -44,44 +44,19 @@
     right: 22px; bottom: 20px; font-size: 10px; letter-spacing: 0.08em;
     color: #666; max-width: 46vw; text-align: right; line-height: 1.5;
   }
-  /* 开机 loading：对照 shader.se——蓝底 + 品牌横标 + 白框分段进度条 + 版权行（宋体衬线） */
+  /* 加载页：对照 shader.se 实拍与源码——深蓝渐变底 + 大写衬线字标 + Loading X%（极简） */
   #loader {
-    position: fixed; inset: 0; z-index: 99; background: #4a49cf; color: #f2efe4;
-    display: flex; align-items: center; justify-content: center;
+    position: fixed; inset: 0; z-index: 99;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(#1b2168 0%, #2a3199 100%); color: #f2efe4;
     font-family: Georgia, "Times New Roman", "Songti SC", serif;
   }
-  #loader::after { /* 扫描线覆层 */
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.22) 2px 4px);
+  #loader .brandname {
+    font-size: clamp(48px, 9vw, 88px); font-weight: 700; font-style: italic;
+    letter-spacing: .14em; line-height: 1;
   }
-  #loader .boot { width: min(640px, 86vw); text-align: center; }
-  #loader .brand { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 26px; }
-  #loader .mark { /* 点阵飞碟标（自绘 IIIIIEI 徽记：五道横线的流线盘） */
-    width: 74px; height: 40px; position: relative;
-  }
-  #loader .mark i {
-    position: absolute; left: 0; right: 0; height: 6px; background: #f2efe4; border-radius: 3px;
-  }
-  #loader .mark i:nth-child(1) { top: 2px;  right: 26px; }
-  #loader .mark i:nth-child(2) { top: 10px; right: 12px; }
-  #loader .mark i:nth-child(3) { top: 18px; left: 4px;  right: 2px; }
-  #loader .mark i:nth-child(4) { top: 26px; left: 12px; }
-  #loader .mark i:nth-child(5) { top: 34px; left: 26px; }
-  #loader .brandname { font-size: clamp(44px, 8vw, 72px); font-weight: 700; letter-spacing: .12em; font-style: italic; }
-  #loader .sub { font-size: 15px; letter-spacing: .06em; margin-bottom: 44px; font-family: "IBM Plex Mono", monospace; }
-  #loader .bar { display: flex; gap: 5px; width: 78%; height: 40px; margin: 0 auto 46px;
-    border: 3px solid #f2efe4; padding: 4px; }
-  #loader .bar i { flex: 1; background: transparent; transform: scaleX(0); transform-origin: left;
-    transition: transform .12s linear; }
-  #loader .bar i.on { transform: scaleX(1); }
-  #loader .copy { font-size: 13px; letter-spacing: .04em; color: #cfccbe; }
-  #loader.off { animation: crtOff .45s ease-in forwards; }
-  @keyframes crtOff { /* CRT 关屏：画面竖压成一条亮线再熄灭 */
-    0% { transform: scaleY(1); filter: brightness(1); }
-    60% { transform: scaleY(.012); filter: brightness(2.6); }
-    100% { transform: scaleY(0); filter: brightness(0); opacity: 0; }
-  }
-  @media (max-width: 640px) { #credit { display: none; } nav .links { display: none; } }
+  #loader .pct { margin-top: 22px; font-size: clamp(17px, 2.2vw, 23px); letter-spacing: .06em; }
+  #loader.off { transition: opacity .5s ease; opacity: 0; pointer-events: none; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js" } }
@@ -102,15 +77,8 @@
   <div id="hint" class="ui">滚动 ▼</div>
   <div id="credit" class="ui">一项技术复刻，灵感来自 shader.se。<br>代码与文案均为原创 · 非官方、无关联</div>
   <div id="loader">
-    <div class="boot">
-      <div class="brand">
-        <div class="mark"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="brandname">IIIIIEI</div>
-      </div>
-      <div class="sub">Shader Pipeline Replica, Website<br>Version 1.0</div>
-      <div class="bar" id="bootBar"></div>
-      <div class="copy">Copyright (c) iiiiiei, 2026. All Rights Reserved.</div>
-    </div>
+    <div class="brandname">IIIIIEI</div>
+    <div class="pct" id="bootPct">Loading 0%</div>
   </div>
   <script>
     // 开发用错误面板：任何脚本错误直接亮在页面上
@@ -128,20 +96,17 @@
   addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
   addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
 
-  // 开机进度：分段白条逐格点亮（对照参考站）。层移除后静默退出（判空，防 null 报错）
+  // 开机进度：模块加载前爬到 55%，模块接管后段；显示为 Loading X%（参考站同款）
   (function () {
     var p = 0, t0 = Date.now();
-    var bar = document.getElementById('bootBar');
-    if (bar) for (var i = 0; i < 24; i++) bar.appendChild(document.createElement('i'));
+    var el = document.getElementById('bootPct');
     window.__boot = function (v) {
-      if (!bar) return; // 层已移除：静默退出
+      if (!el || !document.getElementById('bootPct')) return; // 层已移除：静默退出
       p = Math.max(p, Math.min(v, 1));
-      var n = Math.round(p * 24);
-      var cells = bar.children;
-      for (var j = 0; j < 24; j++) cells[j].className = j < n ? 'on' : '';
+      el.textContent = 'Loading ' + Math.round(p * 100) + '%';
     };
     (function crawl() {
-      if (!document.getElementById('bootBar')) return;
+      if (!document.getElementById('bootPct')) return;
       window.__boot(Math.min(0.55, (Date.now() - t0) / 1600 * 0.55));
       if (p < 0.55) requestAnimationFrame(crawl);
     })();
@@ -1217,8 +1182,8 @@ scenes[2].render(state0, null);
 window.__boot && window.__boot(1);
 setTimeout(() => {
   if (REDUCED || matchMedia('(prefers-reduced-motion: reduce)').matches) { loader.remove(); return; }
-  loader.classList.add('off'); // CRT 关屏动画，曲线压成亮线后移除
-  loader.addEventListener('animationend', () => loader.remove(), { once: true });
+  loader.classList.add('off'); // 参考站同款：淡出
+  setTimeout(() => loader.remove(), 600);
 }, 320);
 
 const clock = new THREE.Clock();
