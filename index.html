@@ -288,6 +288,20 @@ const shellSkin = makeCanvasTexture(256, 256, (ctx, c) => {
 });
 shellSkin.tex.wrapS = shellSkin.tex.wrapT = THREE.RepeatWrapping;
 
+/* ---------------- ASCII 字形图集（10×10，skyworks 视频转 ASCII 技法的静止版） ---------------- */
+const ASCII_RAMP = ' .\',:;!i~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$';
+const asciiAtlas = makeCanvasTexture(480, 480, (ctx, c) => {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#fff'; ctx.font = '34px "IBM Plex Mono", "DotGothic16", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = 0; i < 100; i++) {
+    const ch = ASCII_RAMP[Math.min(ASCII_RAMP.length - 1, Math.floor(i / 100 * ASCII_RAMP.length))];
+    ctx.fillText(ch, (i % 10) * 48 + 24, Math.floor(i / 10) * 48 + 24);
+  }
+});
+asciiAtlas.tex.magFilter = THREE.LinearFilter;
+repaintFns.push(() => asciiAtlas.repaint());
+
 /* 开机自检屏（琥珀单色终端，中文 BIOS） */
 const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
   ctx.fillStyle = '#030200'; ctx.fillRect(0, 0, c.width, c.height);
@@ -433,7 +447,7 @@ class HeroScene {
 
     // 屏幕（次元门，1.85×1.4 与 fitCameraToScreen 对齐）
     this.screenMat = mat(/* glsl */`
-      uniform sampler2D uBoot; uniform sampler2D uNext;
+      uniform sampler2D uBoot; uniform sampler2D uNext; uniform sampler2D uAscii;
       uniform float uMix, uTime, uPower;
       varying vec2 vUv;
       vec2 barrel(vec2 uv) {
@@ -448,6 +462,19 @@ class HeroScene {
       void main() {
         vec2 uv = barrel(vUv);
         vec3 boot = texture2D(uBoot, uv).rgb;
+        // ASCII 化开机内容（skyworks 技法）：cell 中心采样亮度→100级→字形图集
+        float asciiAmt = 1.0 - uMix;
+        if (asciiAmt > 0.001) {
+          vec2 aRes = vec2(78.0, 58.0);
+          vec2 cell = floor(uv * aRes);
+          float lum = dot(texture2D(uBoot, (cell + 0.5) / aRes).rgb, vec3(0.299, 0.587, 0.114));
+          float lv = clamp((lum - 0.04) / 0.8, 0.0, 1.0);
+          float gi = floor(lv * 99.0);
+          vec2 gUv = fract(uv * aRes);
+          vec2 aUv = vec2((mod(gi, 10.0) + gUv.x) / 10.0, 1.0 - (floor(gi / 10.0) + gUv.y) / 10.0);
+          vec3 glyph = texture2D(uAscii, aUv).rgb;
+          boot = mix(boot, glyph * vec3(1.0, 0.72, 0.12) * (0.3 + lv), asciiAmt);
+        }
         vec3 next = texture2D(uNext, uv).rgb;
         vec3 col = mix(boot, next, uMix);
         // 圆角玻璃窗遮罩 + 边缘压暗（与 compose 屏内遮罩同参数：一个系统两个状态）
@@ -463,7 +490,8 @@ class HeroScene {
         gl_FragColor = vec4(col * scan * flick * vig * uPower, 1.0);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       }`, {
-      uBoot: { value: boot.tex }, uNext: { value: null }, uMix: { value: 0 }, uPower: { value: 0 },
+      uBoot: { value: boot.tex }, uNext: { value: null }, uAscii: { value: asciiAtlas.tex },
+      uMix: { value: 0 }, uPower: { value: 0 },
     });
     this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 1.4), this.screenMat);
     this.screen.position.set(0, 0.03, 0.703); crt.add(this.screen);
@@ -655,17 +683,22 @@ class InsideScene {
     this.activeRange = [0.36, 1.05];
     this.scene.add(this.camera); // 揭示层挂在相机上，屏幕空间采样
 
-    // 发光网格地面
+    // 发光网格地面（消费鼠标权重贴图：拖尾推开网格 + 点亮，"鼠标即光"）
     const grid = new THREE.Mesh(new THREE.PlaneGeometry(70, 220, 1, 1), mat(/* glsl */`
-      varying vec2 vUv; uniform float uTime;
+      varying vec2 vUv; uniform float uTime; uniform vec2 uRes; uniform sampler2D uMouseW;
       void main() {
-        vec2 g = abs(fract(vec2(vUv.x * 35.0, vUv.y * 110.0 + uTime * 2.0)) - 0.5);
+        vec3 mw = texture2D(uMouseW, gl_FragCoord.xy / uRes);
+        vec2 mdir = mw.rg * 2.0 - 1.0;
+        vec2 guv = vUv + mdir * mw.b * 0.010;            // 拖尾轻推网格坐标
+        vec2 g = abs(fract(vec2(guv.x * 35.0, guv.y * 110.0 + uTime * 2.0)) - 0.5);
         float line = smoothstep(0.06, 0.0, min(g.x, g.y));
+        line = min(line + mw.b * 0.9, 1.0);              // 扫过之处网格点亮
         float fade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
         vec3 col = mix(vec3(0.0, 0.35, 0.18), vec3(0.2, 1.0, 0.55), line);
-        gl_FragColor = vec4(col * line * 1.6 * fade + col * 0.04, 1.0);
-      }`, {}));
+        gl_FragColor = vec4(col * line * 1.6 * fade + col * 0.04 + vec3(0.1, 0.5, 0.3) * mw.b * fade, 1.0);
+      }`, { uMouseW: { value: null } }));
     grid.rotation.x = -Math.PI / 2; grid.position.y = -2.6; this.scene.add(grid);
+    this.gridMat = grid.material;
 
     // ---------- 机架墙：两侧立柱框架（与卡片同节律，撑起隧道空间感） ----------
     const rackMat = new THREE.MeshStandardMaterial({ color: 0x0d2418, roughness: 0.55, metalness: 0.35 });
@@ -861,10 +894,12 @@ const composeMat = mat(/* glsl */`
   uniform sampler2D uSceneA, uSceneB;
   uniform vec2 uRes;
   uniform float uSwap, uTime, uAberr, uFilm, uGlass, uGlassFlash, uContact, uAspect;
+  uniform sampler2D uMouseW;
   varying vec2 vUv;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-  /* 屏外世界：卓别林黑白胶片。颗粒按亮度遮罩（参考站做法：亮部才有颗粒），零抖动 */
-  vec3 filmGrade(vec3 c, vec2 uv, float t) {
+  /* 屏外世界：卓别林黑白胶片。颗粒按亮度遮罩（参考站做法：亮部才有颗粒），零抖动。
+     wipe：鼠标权重拖尾——扫过之处"抹灰见亮"（鼠标即光） */
+  vec3 filmGrade(vec3 c, vec2 uv, float t, float wipe) {
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     l = clamp((l - 0.5) * 1.12 + 0.49, 0.0, 1.0); // 柔和对比，保留暗部细节
     l += (hash(uv * uRes * 1.6 + floor(t * 24.0) * 7.3) - 0.5)
@@ -874,6 +909,7 @@ const composeMat = mat(/* glsl */`
     l += scr * 0.14 * hash(vec2(col, floor(uv.y * 50.0) + floor(t * 24.0)));
     l *= 0.99 + 0.01 * sin(t * 8.0 + sin(t * 3.7) * 2.0);              // 放映机呼吸（极弱）
     l *= 1.0 - smoothstep(0.5, 1.0, length(uv - 0.5)) * 0.3;           // 老镜头暗角
+    l += wipe * 0.12;                                                   // 抹灰见亮
     return vec3(l);
   }
   /* shader.se 式凸面变形（从其生产 bundle 的 DH+DV 还原）：先外扩再 (1-k) 缩回，角落不越界 */
@@ -898,13 +934,18 @@ const composeMat = mat(/* glsl */`
     vec3 a = texture2D(uSceneA, suv).rgb;
     vec3 b = texture2D(uSceneB, suv).rgb;
     vec3 col = mix(a, b, uSwap);
-    // 色差：对已混合场景源做 ± 偏移重采样
-    vec2 off = vec2(uAberr) / uRes;
-    vec3 colR = mix(texture2D(uSceneA, suv + off).rgb, texture2D(uSceneB, suv + off).rgb, uSwap);
-    vec3 colB = mix(texture2D(uSceneA, suv - off).rgb, texture2D(uSceneB, suv - off).rgb, uSwap);
-    col = vec3(colR.r, col.g, colB.b);
+    // 色差：随离心距缩放（镜头物理正确），纵向偏移，屏边 0.5% 淡出防红边（skyworks 技法）
+    float rad = length(vUv - 0.5) * 2.0;
+    float off = 0.0012 * rad * uAberr;
+    vec3 colR = mix(texture2D(uSceneA, suv + vec2(0.0, -off)).rgb, texture2D(uSceneB, suv + vec2(0.0, -off)).rgb, uSwap);
+    vec3 colB = mix(texture2D(uSceneA, suv + vec2(0.0, off)).rgb, texture2D(uSceneB, suv + vec2(0.0, off)).rgb, uSwap);
+    vec3 ab = vec3(colR.r, col.g, colB.b);
+    float em = 0.005;
+    float ef = min(smoothstep(0.0, em, vUv.x), smoothstep(0.0, em, 1.0 - vUv.x))
+             * min(smoothstep(0.0, em, vUv.y), smoothstep(0.0, em, 1.0 - vUv.y));
+    col = mix(col, ab, ef);
 
-    col = mix(col, filmGrade(col, uv, uTime), uFilm); // 屏外：默片时代
+    col = mix(col, filmGrade(col, uv, uTime, texture2D(uMouseW, uv).b * uFilm), uFilm); // 屏外：默片时代 + 抹灰见亮
 
     // 屏内常驻遮罩（与 CRT 屏窗同一几何：穿屏时物理屏窗 → 渐变为视口遮罩，无框中框）
     if (uGlass * uGlassFlash > 0.001) {
@@ -930,32 +971,81 @@ const composeMat = mat(/* glsl */`
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
   uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 }, uContact: { value: 0 },
-  uAberr: { value: 1.6 }, uAspect: { value: 1 },
+  uAberr: { value: 1.4 }, uAspect: { value: 1 }, uMouseW: { value: null },
 });
 
-/* ---------- bloom 链：亮部提取（1/4 分辨率）→ 水平/垂直高斯模糊 ---------- */
-const brightMat = mat(/* glsl */`
-  uniform sampler2D uScene; uniform float uThresh;
+/* ---------- bloom：UE4 式 mip 金字塔（skyworks 技法）----------
+   4-tap 半纹素降采样 ×3 级（亮度阈值熔进首级，省全分辨率 pass）
+   + tent 上采样逐级按 radius 混合。宽、软、省。 */
+const downFirstMat = mat(/* glsl */`
+  uniform sampler2D uTex; uniform vec2 uTexel;
   varying vec2 vUv;
   void main() {
-    vec3 c = texture2D(uScene, vUv).rgb;
-    float l = max(c.r, max(c.g, c.b));
-    float k = smoothstep(uThresh, uThresh + 0.25, l);
-    gl_FragColor = vec4(c * k, 1.0);
-  }`, { uScene: { value: null }, uThresh: { value: 0.72 } });
-
-const blurMat = mat(/* glsl */`
-  uniform sampler2D uTex; uniform vec2 uDir; // uDir 已含纹素尺寸
-  varying vec2 vUv;
-  void main() {
-    vec3 s = texture2D(uTex, vUv).rgb * 0.227027;
-    float w[4]; w[0] = 0.1945946; w[1] = 0.1216216; w[2] = 0.054054; w[3] = 0.016216;
-    for (int i = 1; i < 5; i++) {
-      s += texture2D(uTex, vUv + uDir * float(i)).rgb * w[i - 1];
-      s += texture2D(uTex, vUv - uDir * float(i)).rgb * w[i - 1];
+    vec2 h = uTexel * 0.5;
+    vec3 c = vec3(0.0);
+    vec2 o[4]; o[0]=vec2(-1.,1.); o[1]=vec2(1.,1.); o[2]=vec2(-1.,-1.); o[3]=vec2(1.,-1.);
+    for (int i = 0; i < 4; i++) {
+      vec3 t = texture2D(uTex, vUv + h * o[i]).rgb;
+      float l = max(t.r, max(t.g, t.b));
+      c += t * smoothstep(0.72, 0.78, l); // preFilter：熔进首级降采样
     }
-    gl_FragColor = vec4(s, 1.0);
-  }`, { uTex: { value: null }, uDir: { value: new THREE.Vector2() } });
+    gl_FragColor = vec4(c * 0.25, 1.0);
+  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() } });
+
+const downMat = mat(/* glsl */`
+  uniform sampler2D uTex; uniform vec2 uTexel;
+  varying vec2 vUv;
+  void main() {
+    vec2 h = uTexel * 0.5;
+    vec3 c = texture2D(uTex, vUv + h * vec2(-1., 1.)).rgb + texture2D(uTex, vUv + h * vec2(1., 1.)).rgb
+           + texture2D(uTex, vUv + h * vec2(-1., -1.)).rgb + texture2D(uTex, vUv + h * vec2(1., -1.)).rgb;
+    gl_FragColor = vec4(c * 0.25, 1.0);
+  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() } });
+
+const upMat = mat(/* glsl */`
+  uniform sampler2D uTex; uniform sampler2D uSupport; uniform vec2 uTexel; uniform float uRadius;
+  varying vec2 vUv;
+  void main() {
+    vec2 h = uTexel * 0.5;
+    vec3 f = texture2D(uTex, vUv + h * vec2(-1., 1.)).rgb + texture2D(uTex, vUv + h * vec2(1., 1.)).rgb
+           + texture2D(uTex, vUv + h * vec2(-1., -1.)).rgb + texture2D(uTex, vUv + h * vec2(1., -1.)).rgb;
+    gl_FragColor = vec4(mix(texture2D(uSupport, vUv).rgb, f * 0.25, uRadius), 1.0);
+  }`, { uTex: { value: null }, uSupport: { value: null }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 0.85 } });
+
+/* ---------- 鼠标权重通道（skyworks 技法）----------
+   乒乓 FBO 反馈拖尾：胶囊线段 SDF 落笔（快速移动不断线）×速度强度，
+   pow(0.2,δ) 帧率无关衰减；输出 RG=方向 B=强度。输入端三组弹簧。 */
+const mouseMat = mat(/* glsl */`
+  uniform sampler2D uPrev; uniform vec2 uMouse, uPrevMouse, uDir;
+  uniform float uVel, uDelta;
+  varying vec2 vUv;
+  void main() {
+    vec2 a = uPrevMouse; vec2 b = uMouse; // 均为 0..1
+    vec2 ab = b - a;
+    float t = clamp(dot(vUv - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    float line = 1.0 - smoothstep(0.03, 0.16, length(vUv - (a + ab * t)));
+    float ptr = 1.0 - smoothstep(0.0, 0.22, length(vUv - b));
+    float stamp = max(line, ptr) * 1.2 * uVel;
+    vec3 prev = texture2D(uPrev, vUv).rgb;
+    float w = max(prev.b * pow(0.2, uDelta), stamp);
+    vec2 dir = mix(prev.rg, uDir * 0.5 + 0.5, clamp(stamp, 0.0, 1.0));
+    gl_FragColor = vec4(dir, w);
+  }`, {
+  uPrev: { value: null }, uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+  uPrevMouse: { value: new THREE.Vector2(0.5, 0.5) }, uDir: { value: new THREE.Vector2(0, 1) },
+  uVel: { value: 0 }, uDelta: { value: 1 / 60 },
+});
+
+/* 弹簧积分器（等价 Motion 的 stiffness/damping，零依赖） */
+function makeSpring(k, c) {
+  return { x: 0, v: 0, step(target, dt) { this.v += ((target - this.x) * k - this.v * c) * dt; this.x += this.v * dt; return this.x; } };
+}
+const mwSprings = {
+  x: makeSpring(180, 22), y: makeSpring(180, 22),
+  dx: makeSpring(110, 18), dy: makeSpring(110, 18),
+  vel: makeSpring(150, 20),
+};
+const mwState = { last: 0, px: 0.5, py: 0.5, ping: true };
 
 /* ---------- final：辉光合成 + ACES 色调映射 + 扫描线/颗粒/暗角/穿幕闪 ---------- */
 const finalMat = mat(/* glsl */`
@@ -972,9 +1062,11 @@ const finalMat = mat(/* glsl */`
     col = aces(col * 1.06); // 轻提曝再压曲线
     float scan = 1.0 - uScan * 0.22 * (0.5 + 0.5 * sin(vUv.y * uRes.y * 2.6));
     col *= scan;
-    // 颗粒按亮度遮罩：暗部近零（参考站做法，避免暗部噪点成"脏"）
+    // 颗粒：高斯 PDF 成形（skyworks）——正亮度"银盐"颗粒，暗部略强（负片特性）
+    float h = hash(vUv * (uTime + 1.0));
     float lum = max(col.r, max(col.g, col.b));
-    col += (hash(vUv * (uTime + 1.0)) - 0.5) * uGrain * (0.25 + 0.75 * smoothstep(0.25, 0.9, lum));
+    float grain = 0.5699 * exp(-(h * h) / 0.245); // σ=0.35
+    col += grain * uGrain * (0.6 + 0.6 * (1.0 - lum));
     vec2 d = vUv - 0.5;
     col *= 1.0 - smoothstep(0.45, 0.95, length(d)) * uVig;
     col *= 1.0 - uDip;
@@ -990,14 +1082,42 @@ postCam.position.z = 5; // 平面落在视锥中部，远离 near/far 边界
 const postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), composeMat);
 postScene.add(postQuad);
 
-/* 后期用的渲染目标：全分辨率场景帧 + 两张 1/4 分辨率 bloom 中间件 */
+/* 后期用的渲染目标：全分辨率场景帧 + mip 金字塔 bloom ×5 + 鼠标权重乒乓 ×2 */
 function makeRT() {
   return new THREE.WebGLRenderTarget(1, 1, {
     minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false,
   });
 }
-const sceneRT = makeRT(), bloomA = makeRT(), bloomB = makeRT();
+const sceneRT = makeRT();
+const pyr = { d0: makeRT(), d1: makeRT(), d2: makeRT(), u1: makeRT(), u0: makeRT() };
+const mwRT = [makeRT(), makeRT()];
 const blackTex = makeCanvasTexture(2, 2, (ctx, c) => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 2, 2); }).tex;
+
+/* 鼠标权重通道每帧驱动（在场景渲染前跑，半分辨率、一 pass） */
+function updateMouseWeight(t) {
+  const dt = Math.min(t - mwState.last || 1 / 60, 1 / 30);
+  mwState.last = t;
+  const prevX = mwState.px, prevY = mwState.py; // 上一帧弹簧输出
+  const px = mwSprings.x.step((mouse.x + 1) / 2, dt);
+  const py = mwSprings.y.step((mouse.y + 1) / 2, dt);
+  const ddx = px - prevX, ddy = py - prevY;
+  const dl = Math.hypot(ddx, ddy);
+  if (dl > 1e-4) { mwSprings.dx.step(ddx / dl, dt); mwSprings.dy.step(ddy / dl, dt); }
+  const vel = mwSprings.vel.step(clamp(dl / Math.max(dt, 1 / 120), 0, 1) * 1.5, dt);
+  mwState.px = px; mwState.py = py;
+  const u = mouseMat.uniforms;
+  u.uPrev.value = mwRT[mwState.ping ? 1 : 0].texture;
+  u.uMouse.value.set(px, py);
+  u.uPrevMouse.value.set(prevX, prevY);
+  u.uDir.value.set(mwSprings.dx.x, mwSprings.dy.x);
+  u.uVel.value = REDUCED ? 0 : vel;
+  u.uDelta.value = dt;
+  postQuad.material = mouseMat;
+  renderer.setRenderTarget(mwRT[mwState.ping ? 0 : 1]);
+  renderer.render(postScene, postCam);
+  mwState.ping = !mwState.ping;
+  return mwRT[mwState.ping ? 1 : 0].texture; // 刚写完的那张
+}
 
 /* ============================================================
    组装：场景链 + 主循环
@@ -1024,8 +1144,11 @@ function resize() {
   shared.uRes.value.set(fw, fh);
   composeMat.uniforms.uAspect.value = w / h; // 玻璃圆角边框需要宽高比
   sceneRT.setSize(Math.floor(w * dpr), Math.floor(h * dpr));       // 后期全分辨率帧
-  bloomA.setSize(Math.max(2, Math.floor(w * dpr / 4)), Math.max(2, Math.floor(h * dpr / 4)));
-  bloomB.setSize(bloomA.width, bloomA.height);                     // bloom 1/4 分辨率
+  const half2 = (k) => [Math.max(2, Math.floor(w * dpr / k)), Math.max(2, Math.floor(h * dpr / k))];
+  pyr.d0.setSize(...half2(2)); pyr.u0.setSize(...half2(2));         // mip 金字塔
+  pyr.d1.setSize(...half2(4)); pyr.u1.setSize(...half2(4));
+  pyr.d2.setSize(...half2(8));
+  mwRT[0].setSize(...half2(2)); mwRT[1].setSize(...half2(2));       // 鼠标权重乒乓
 }
 addEventListener('resize', resize);
 resize();
@@ -1065,6 +1188,11 @@ function frame() {
   mouse.sy = lerp(mouse.sy, mouse.y, 0.06);
   shared.uTime.value = t;
 
+  // 鼠标权重通道（先跑，产出本帧拖尾贴图供场景/compose 采样）
+  const mwTex = updateMouseWeight(t);
+  scenes[1].gridMat.uniforms.uMouseW.value = mwTex;
+  composeMat.uniforms.uMouseW.value = mwTex;
+
   // 选择性渲染 + 倒序链：END → INSIDE → HERO，next 纹理逐级下传
   let texC = scenes[2].fbo.texture, texBcur = scenes[1].fbo.texture;
   if (inRange(scenes[2], progress)) texC = scenes[2].render(state, null);
@@ -1088,26 +1216,32 @@ function frame() {
   renderer.setRenderTarget(sceneRT);
   renderer.render(postScene, postCam);
 
-  // bloom：亮部提取（1/4 res）→ H 模糊 → V 模糊（低端档跳过）
+  // bloom：mip 金字塔（亮度阈值熔进首级降采样；降 ×3 → 升 ×2；低端档跳过）
   if (CFG.bloom) {
-    postQuad.material = brightMat;
-    brightMat.uniforms.uScene.value = sceneRT.texture;
-    renderer.setRenderTarget(bloomA);
-    renderer.render(postScene, postCam);
-    postQuad.material = blurMat;
-    const tx = 1 / bloomA.width, ty = 1 / bloomA.height;
-    blurMat.uniforms.uTex.value = bloomA.texture; blurMat.uniforms.uDir.value.set(tx, 0);
-    renderer.setRenderTarget(bloomB);
-    renderer.render(postScene, postCam);
-    blurMat.uniforms.uTex.value = bloomB.texture; blurMat.uniforms.uDir.value.set(0, ty);
-    renderer.setRenderTarget(bloomA);
-    renderer.render(postScene, postCam);
+    postQuad.material = downFirstMat;
+    downFirstMat.uniforms.uTex.value = sceneRT.texture;
+    downFirstMat.uniforms.uTexel.value.set(1 / sceneRT.width, 1 / sceneRT.height);
+    renderer.setRenderTarget(pyr.d0); renderer.render(postScene, postCam);
+    postQuad.material = downMat;
+    downMat.uniforms.uTex.value = pyr.d0.texture;
+    downMat.uniforms.uTexel.value.set(1 / pyr.d0.width, 1 / pyr.d0.height);
+    renderer.setRenderTarget(pyr.d1); renderer.render(postScene, postCam);
+    downMat.uniforms.uTex.value = pyr.d1.texture;
+    downMat.uniforms.uTexel.value.set(1 / pyr.d1.width, 1 / pyr.d1.height);
+    renderer.setRenderTarget(pyr.d2); renderer.render(postScene, postCam);
+    postQuad.material = upMat;
+    upMat.uniforms.uTex.value = pyr.d2.texture; upMat.uniforms.uSupport.value = pyr.d1.texture;
+    upMat.uniforms.uTexel.value.set(1 / pyr.d2.width, 1 / pyr.d2.height);
+    renderer.setRenderTarget(pyr.u1); renderer.render(postScene, postCam);
+    upMat.uniforms.uTex.value = pyr.u1.texture; upMat.uniforms.uSupport.value = pyr.d0.texture;
+    upMat.uniforms.uTexel.value.set(1 / pyr.u1.width, 1 / pyr.u1.height);
+    renderer.setRenderTarget(pyr.u0); renderer.render(postScene, postCam);
   }
 
   // final：辉光合成 + ACES + 扫描线/颗粒/暗角 → 屏幕（闪断已删：切换本身无缝）
   postQuad.material = finalMat;
   finalMat.uniforms.uScene.value = sceneRT.texture;
-  finalMat.uniforms.uBloom.value = CFG.bloom ? bloomA.texture : blackTex;
+  finalMat.uniforms.uBloom.value = CFG.bloom ? pyr.u0.texture : blackTex;
   // ⑤ 0.49–0.60 切换后辉光才爬升（屏外保持极低）
   finalMat.uniforms.uBloomAmt.value = CFG.bloom ? lerp(0.1, 0.55, smoothstep(0.49, 0.60, progress)) : 0;
   finalMat.uniforms.uScan.value = lerp(0.06, 0.5, smoothstep(0.50, 0.62, progress) * (1 - smoothstep(0.86, 0.96, progress)));
