@@ -58,6 +58,7 @@
 | shader.se · loading 页 | CRT 终端风加载界面：字符块进度条（████░░）+ 品牌标识 + 扫描线质感，与主站后处理统一（2026-09-16 实测） |
 | shader.se · 404 彩蛋 | **金库门**：3D 门 + 舵轮 + 铰链螺栓 + 404 大字；滚动开门 → 拟物页角卷起转场 → 门洞露出真实首页场景 → 穿回首页（官方 [X 帖](https://x.com/shadersweden/status/2091296425699086657)，2026-09-16 实测） |
 | OpenAI《The Intelligence Age》 | 超级碗 2025 广告（Ratatat "Neckbrace"，2025-02-09）：黑白点阵聚散成象 + "the first …" 叙事节奏；40 秒处为白点组成的复古窗口（地球仪 ··· 80s 一体机）。已借其语言做 404 点彩页；外部黑白默片与它的单色克制同源 |
+| shader-sweden/skyworks | 官方开源的示范作品（github.com/shader-sweden/skyworks）：**鼠标权重通道**（乒乓FBO拖尾：胶囊线段SDF+速度强度+pow(0.2,δ)帧率无关衰减+RG方向/B强度数据贴图+Motion三弹簧）、**视频→ASCII**（cell亮度量化0-99→10×10字形图集）、**圆形过冲波过渡**（mask驱动z位移 sin(πt)×-0.35）、**UE4式mip金字塔bloom**（4-tap半纹素+tent上采样+preFilter熔进首级+resize防抖）、**高斯PDF颗粒+暗部加权**、**色差随离心距缩放+边缘0.5%淡出防红边**、GLTF逐网格instancing、HTML段blur揭示、页面长度以视口为单位、每页contrast/brightness/sat/bloom配置表、加载→intro→滚动交接（1s缓冲+1.6s easeOut）（2026-09-18 源码考古） |
 | vgpu.sh | ASCII 阴影/光照计算 |
 | tympanus.net/Tutorials/ASCIILogo | ASCII 风格世界 |
 | codepen.io/fand/full/YzoWyqJ | 鼠标光源 + CRT 抖动文本占位页 |

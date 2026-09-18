@@ -85,6 +85,26 @@ Filip Kantedal 与 Simon Hedlund（shader.se 创始人）在 Codrops 发表过�
 这两点的共同启示：**边缘状态也是叙事面**。loading 是第一印象、404 是"迷路时刻"——它们
 与 memo 里的「彩蛋精神」直接对应，属于正式站必做项。
 
+## skyworks 源码考古（2026-09-18，官方开源示范作 github.com/shader-sweden/skyworks）
+
+复刻未覆盖的新技法（正式站候选，细节见 PROJECT.md 材料表）：
+
+- **鼠标权重通道**：双 FBO 乒乓反馈，鼠标轨迹以"胶囊线段 SDF"落笔（快速移动不断线），
+  强度×速度，按 `pow(0.2, delta)` 帧率无关衰减成拖尾；输出 RG=方向 B=强度的数据贴图，
+  场景用它做顶点位移与高亮；输入端三组 Motion 弹簧（位置/方向/速度）。——"鼠标即光"的工程实现。
+- **视频→ASCII**：cell 中心采样亮度 → remap → 量化 0–99 → 10×10 字形图集索引，一 pass 完成。
+- **圆形过冲波过渡**：径向 mask 每半径独立阈值推进，`sin(mask·π)×-0.35` 驱动 z 位移——扫过处
+  几何物理"荡"一下再落定。
+- **UE4 式 mip 金字塔 bloom**：4-tap 半纹素降采样 + tent 上采样按 radius 混合；亮度阈值熔进
+  首级降采样（省一个全分辨率 pass）；RT 尺寸 100ms 防抖；HalfFloat。
+- **颗粒**：高斯 PDF 成形（非均匀哈希）+ 暗部加权 `1-color`（与官网的亮部遮罩互为风格两极）。
+- **色差**：强度随离心距×2 缩放（物理正确）+ 屏边 0.5% 淡出防红边 + 纵向 R/B 偏移。
+- 次要：GLTF 逐网格转 InstancedMesh；HTML 段落 blur→sharp+scale 揭示；页面长度/渲染偏移以
+  视口为单位；每页 contrast/brightness/saturation/bloomIntensity 配置；加载→intro(1.6s easeOut)
+  →滚动解锁交接。
+
+其 README 亦自述：多场景 FBO、纹理前传、compose 合成、滚动驱动——与本副本架构一致（互相印证）。
+
 ## 原站源码逆向（2026-09-16，从生产 bundle 提取，本副本后期据此校准）
 
 shader.se 是 Next.js 生产站，但其 chunk JS 里 TSL 节点与 GLSL 片段基本明文可读。关键收获：
