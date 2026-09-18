@@ -1,4 +1,4 @@
-<!doctype html>
+  <!doctype html>
 <html lang="zh">
 <head>
 <meta charset="utf-8" />
@@ -44,20 +44,37 @@
     right: 22px; bottom: 20px; font-size: 10px; letter-spacing: 0.08em;
     color: #666; max-width: 46vw; text-align: right; line-height: 1.5;
   }
-  /* 开机 loading：CRT 终端（对齐 shader.se 的思路——加载页就是站点的第一屏"开机动画"） */
+  /* 开机 loading：对照 shader.se——蓝底 + 品牌横标 + 白框分段进度条 + 版权行（宋体衬线） */
   #loader {
-    position: fixed; inset: 0; z-index: 99; background: #050403; color: var(--green);
+    position: fixed; inset: 0; z-index: 99; background: #4a49cf; color: #f2efe4;
     display: flex; align-items: center; justify-content: center;
+    font-family: Georgia, "Times New Roman", "Songti SC", serif;
   }
   #loader::after { /* 扫描线覆层 */
     content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.30) 2px 4px);
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.22) 2px 4px);
   }
-  #loader .boot { font-size: 12px; letter-spacing: .22em; line-height: 2.15; width: min(560px, 86vw); }
-  #loader .brand { color: var(--amber); font-size: 15px; letter-spacing: .5em; margin-bottom: 16px; }
-  #loader .bar { white-space: nowrap; }
-  #loader .pct { color: #9adfb8; }
-  #loader .note { color: #2f6c4a; font-size: 11px; margin-top: 14px; letter-spacing: .12em; }
+  #loader .boot { width: min(640px, 86vw); text-align: center; }
+  #loader .brand { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 26px; }
+  #loader .mark { /* 点阵飞碟标（自绘 IIIIIEI 徽记：五道横线的流线盘） */
+    width: 74px; height: 40px; position: relative;
+  }
+  #loader .mark i {
+    position: absolute; left: 0; right: 0; height: 6px; background: #f2efe4; border-radius: 3px;
+  }
+  #loader .mark i:nth-child(1) { top: 2px;  right: 26px; }
+  #loader .mark i:nth-child(2) { top: 10px; right: 12px; }
+  #loader .mark i:nth-child(3) { top: 18px; left: 4px;  right: 2px; }
+  #loader .mark i:nth-child(4) { top: 26px; left: 12px; }
+  #loader .mark i:nth-child(5) { top: 34px; left: 26px; }
+  #loader .brandname { font-size: clamp(44px, 8vw, 72px); font-weight: 700; letter-spacing: .12em; font-style: italic; }
+  #loader .sub { font-size: 15px; letter-spacing: .06em; margin-bottom: 44px; font-family: "IBM Plex Mono", "DotGothic16", monospace; }
+  #loader .bar { display: flex; gap: 5px; width: 78%; height: 40px; margin: 0 auto 46px;
+    border: 3px solid #f2efe4; padding: 4px; }
+  #loader .bar i { flex: 1; background: transparent; transform: scaleX(0); transform-origin: left;
+    transition: transform .12s linear; }
+  #loader .bar i.on { transform: scaleX(1); }
+  #loader .copy { font-size: 13px; letter-spacing: .04em; color: #cfccbe; }
   #loader.off { animation: crtOff .45s ease-in forwards; }
   @keyframes crtOff { /* CRT 关屏：画面竖压成一条亮线再熄灭 */
     0% { transform: scaleY(1); filter: brightness(1); }
@@ -87,10 +104,13 @@
   <div id="credit" class="ui">一项技术复刻，灵感来自 shader.se。<br>代码与文案均为原创 · 非官方、无关联</div>
   <div id="loader">
     <div class="boot">
-      <div class="brand">IIIIIEI 系统</div>
-      <div class="bar">信号同步 <span id="bootBar">░░░░░░░░░░░░░░░░░░░░░░░░</span> <span class="pct" id="bootPct">0%</span></div>
-      <div id="bootMsg">正在捕获信号…</div>
-      <div class="note">CRT 隧道 v1 · 请稍候</div>
+      <div class="brand">
+        <div class="mark"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="brandname">IIIIIEI</div>
+      </div>
+      <div class="sub">Shader Pipeline Replica, Website<br>Version 1.0</div>
+      <div class="bar" id="bootBar"></div>
+      <div class="copy">Copyright (c) iiiiiei, 2026. All Rights Reserved.</div>
     </div>
   </div>
   <script>
@@ -109,25 +129,22 @@
   addEventListener('error', (e) => showErr('ERR: ' + (e.message || e.type) + (e.filename ? ' @' + e.filename.split('/').pop() + ':' + e.lineno : '')));
   addEventListener('unhandledrejection', (e) => showErr('REJ: ' + (e.reason && e.reason.message || e.reason)));
 
-  // 开机进度：模块脚本加载前由这里先爬到 55%，模块接管后段。
-  // 注意：loading 层可能在爬行结束前就被模块移除——所有取元素都要判空（用户截图抓到过 bootMsg null 报错）。
+  // 开机进度：分段白条逐格点亮（对照参考站）。层移除后静默退出（判空，防 null 报错）
   (function () {
     var p = 0, t0 = Date.now();
-    var $ = function (id) { return document.getElementById(id); };
-    window.__boot = function (v, msg) {
-      var bar = $('bootBar'); if (!bar) return; // 层已移除：静默退出
-      var advanced = v > p;                     // 只在进度前进的调用里更新文案，防旧消息回写
+    var bar = document.getElementById('bootBar');
+    if (bar) for (var i = 0; i < 24; i++) bar.appendChild(document.createElement('i'));
+    window.__boot = function (v) {
+      if (!bar) return; // 层已移除：静默退出
       p = Math.max(p, Math.min(v, 1));
-      if (msg && advanced) { var m = $('bootMsg'); if (m) m.textContent = msg; }
       var n = Math.round(p * 24);
-      bar.textContent = '█'.repeat(n) + '░'.repeat(24 - n);
-      var pct = $('bootPct'); if (pct) pct.textContent = Math.round(p * 100) + '%';
+      var cells = bar.children;
+      for (var j = 0; j < 24; j++) cells[j].className = j < n ? 'on' : '';
     };
     (function crawl() {
-      if (!$('bootBar')) return; // 层没了就别再爬
-      var target = Math.min(0.55, (Date.now() - t0) / 1600 * 0.55);
-      window.__boot(target, target < 0.3 ? '正在捕获信号…' : '正在拉取模块…');
-      if (target < 0.55) requestAnimationFrame(crawl);
+      if (!document.getElementById('bootBar')) return;
+      window.__boot(Math.min(0.55, (Date.now() - t0) / 1600 * 0.55));
+      if (p < 0.55) requestAnimationFrame(crawl);
     })();
   })();
   </script>
@@ -153,10 +170,19 @@ const canvas = document.getElementById('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// 诊断：着色器编译错误亮到页面（three 默认只走 console）
+// 诊断：着色器编译错误亮到页面（three 默认只走 console），并附出错行上下文
 renderer.debug.onShaderError = (gl, program, vs, fs) => {
-  try { window.showErr && showErr('SHADER ERR: ' + String(gl.getShaderInfoLog(fs)).slice(0, 300)); }
-  catch { window.showErr && showErr('SHADER ERR: (no log)'); }
+  try {
+    const log = String(gl.getShaderInfoLog(fs) || '');
+    const src = String(gl.getShaderSource(fs) || '').split('\n');
+    const m = log.match(/0:(\d+)/);
+    let ctx = '';
+    if (m) {
+      const ln = parseInt(m[1], 10);
+      ctx = '\n>>> ' + src.slice(Math.max(0, ln - 3), ln + 2).map((s0, i) => (ln - 2 + i) + ': ' + s0).join('\n>>> ');
+    }
+    showErr('SHADER ERR: ' + log.slice(0, 160) + ctx);
+  } catch { window.showErr && showErr('SHADER ERR: (no log)'); }
 };
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -364,9 +390,13 @@ const DEFAULT_VERT = /* glsl */`
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
-const mat = (frag, uniforms, opts = {}) => new THREE.ShaderMaterial({
-  uniforms: { ...shared, ...uniforms }, vertexShader: DEFAULT_VERT, fragmentShader: frag, ...opts,
-});
+let __matTag = 'unknown';
+const mat = (frag, uniforms, opts = {}) => {
+  __matTag = (opts && opts.__tag) || 'unnamed';
+  return new THREE.ShaderMaterial({
+    uniforms: { ...shared, ...uniforms }, vertexShader: DEFAULT_VERT, fragmentShader: frag, ...opts,
+  });
+};
 
 /* ============================================================
    SCENE A · HERO — 80s 桌面上的 CRT，滚动推镜头穿进屏幕
@@ -398,52 +428,57 @@ class HeroScene {
     floor.rotation.x = -Math.PI / 2; floor.position.y = -3.55; floor.receiveShadow = true;
     this.scene.add(floor);
 
-    // ---------- 圆角矩形轮廓（壳体建模用） ----------
-    const roundedRect = (w, h, r) => {
-      const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
-      s.moveTo(x + r, y);
-      s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
-      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
-      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
-      return s;
-    };
-
-    // CRT 显示器：圆角挤出壳 + 尾部收窄锥 + 带屏幕洞的前面板
+    // Macintosh 一体机（对照真实 128K/SE 造型）：前宽后窄梯形箱体 + 大圆角 + 屏下条带 + 软盘缝
     const crt = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRect(2.55, 2.0, 0.16), {
-      depth: 1.05, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.07,
-      bevelSegments: 3, curveSegments: 10,
-    }), beige);
-    shell.geometry.translate(0, 0, -0.525); // 前表面落在 z≈+0.6
-    shell.castShadow = true; crt.add(shell);
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.92, 0.95, 4, 1), M(0xc4b493, 0.65));
-    tail.rotation.set(Math.PI / 2, 0, Math.PI / 4); // 方截面转正 + 横置成尾锥
-    tail.scale.set(1.35, 1, 0.95);
-    tail.position.z = -1.05; tail.castShadow = true; crt.add(tail);
-    const bezelShape = roundedRect(2.42, 1.88, 0.1);
-    bezelShape.holes.push(roundedRect(1.98, 1.52, 0.06));
-    const bezel = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(bezelShape, { depth: 0.1, bevelEnabled: false, curveSegments: 10 }),
-      M(0xcbbd9c, 0.55));
-    bezel.position.z = 0.6; bezel.castShadow = true; crt.add(bezel);
-    // 铭牌 + 电源 LED
-    const logo = makeCanvasTexture(256, 64, (ctx, c) => {
-      ctx.fillStyle = '#c9ba97'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = '#3a3327'; ctx.font = 'bold 34px "Courier New", monospace';
-      ctx.textAlign = 'center'; ctx.fillText('IIIIIEI  2000', c.width / 2, 44);
+    // 箱体：梯形轮廓（前 2.7 宽、后 2.05 宽）× 2.55 高，深 2.2——正面朝 +z
+    const trapPrism = (wF, wB, h, depth, r) => {
+      const s = new THREE.Shape();
+      const hw = wF / 2, inset = (wF - wB) / 2;
+      s.moveTo(-hw + r, 0);
+      s.lineTo(hw - r, 0); s.quadraticCurveTo(hw, 0, hw - inset * 0.2, r); // 右下角
+      s.lineTo(hw - inset, h - r);                                         // 右侧内收到后宽
+      s.quadraticCurveTo(hw - inset, h, hw - inset - r, h);                // 右上角
+      s.lineTo(-hw + inset + r, h);                                        // 顶边
+      s.quadraticCurveTo(-hw + inset, h, -hw + inset, h - r);              // 左上角
+      s.lineTo(-hw + inset * 0.2, r);                                      // 左侧
+      s.quadraticCurveTo(-hw, 0, -hw + r, 0);                              // 左下角
+      const g = new THREE.ExtrudeGeometry(s, {
+        depth, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06,
+        bevelSegments: 3, curveSegments: 8,
+      });
+      g.translate(0, 0, -depth / 2);
+      return g;
+    };
+    const shell = new THREE.Mesh(trapPrism(2.7, 2.05, 2.55, 2.2, 0.28), beige);
+    shell.castShadow = true;
+    crt.add(shell);
+    // 屏幕 bezel：正面面板
+    const facePlate = new THREE.Mesh(new THREE.BoxGeometry(2.45, 2.05, 0.1), M(0xcbbd9c, 0.6));
+    facePlate.position.set(0, 0.32, 1.12); facePlate.castShadow = true; crt.add(facePlate);
+    // 屏下条带：铭牌居中 + 电源 LED 右侧（真实 Mac 的布局）
+    const logo = makeCanvasTexture(512, 48, (ctx, c) => {
+      ctx.fillStyle = '#cbbd9c'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#4a4132'; ctx.font = 'bold 26px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center'; ctx.fillText('IIIIIEI', c.width / 2, 32);
     });
-    const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.12),
+    repaintFns.push(() => logo.repaint());
+    const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.062),
       new THREE.MeshBasicMaterial({ map: logo.tex }));
-    logoMesh.position.set(-0.75, -0.8, 0.705); crt.add(logoMesh);
-    this.led = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8),
+    logoMesh.position.set(0, -0.82, 1.17); crt.add(logoMesh);
+    this.led = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0x6cff9a }));
-    this.led.position.set(1.0, -0.8, 0.705); crt.add(this.led);
-    // 底座：转轴颈 + 矩形矮台（旧版圆盘脚是"飞碟"观感来源之一，已换）
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.21, 0.24, 12), M(0xb4a583, 0.5));
-    neck.position.y = -1.18; crt.add(neck);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.12, 1.2), M(0xa89878, 0.55));
-    foot.position.y = -1.35; foot.castShadow = true; crt.add(foot);
+    this.led.position.set(0.95, -0.82, 1.17); crt.add(this.led);
+    // 软盘插槽：细长横缝（真实 Mac 的标志细节）
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.045, 0.06), M(0x35301f, 0.5));
+    slot.position.set(0.0, -1.04, 1.17); crt.add(slot);
+    const slotLip = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.02, 0.02), M(0xa5956f, 0.6));
+    slotLip.position.set(0.0, -1.01, 1.19); crt.add(slotLip);
+    // 侧百叶通风（每侧三组浅刻线）
+    for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.07, 1.5), M(0x8f7f5c, 0.7));
+      vent.position.set(side * 1.36, 0.85 - i * 0.16, -0.1);
+      crt.add(vent);
+    }
 
     // 屏幕（次元门，1.85×1.4 与 fitCameraToScreen 对齐）
     this.screenMat = mat(/* glsl */`
@@ -478,7 +513,7 @@ class HeroScene {
         vec3 next = texture2D(uNext, uv).rgb;
         vec3 col = mix(boot, next, uMix);
         // 圆角玻璃窗遮罩 + 边缘压暗（与 compose 屏内遮罩同参数：一个系统两个状态）
-        float d = sdRound(vUv - 0.5, vec2(0.5) - 0.028, 0.16);
+        float d = sdRound(vUv - 0.5, vec2(0.5 - 0.028), 0.16);
         float m = smoothstep(0.0, 0.012, -d);
         col *= 0.78 + 0.22 * smoothstep(0.0, 0.3, -d);
         col *= m;
@@ -491,15 +526,15 @@ class HeroScene {
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
       }`, {
       uBoot: { value: boot.tex }, uNext: { value: null }, uAscii: { value: asciiAtlas.tex },
-      uMix: { value: 0 }, uPower: { value: 0 },
-    });
+      uMix: { value: 0 }, uPower: { value: 0 }, }, { __tag: "screenMat" });
     this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 1.4), this.screenMat);
-    this.screen.position.set(0, 0.03, 0.703); crt.add(this.screen);
+    this.screen.position.set(0, 0.32, 1.22); crt.add(this.screen);
 
-    // 屏幕辉光：只用 PointLight 给桌面/壳体照明，不再放 additive 面片
-    // （旧版径向渐变面片叠在圆形底座上会形成一个随鼠标/呼吸脉动的"飞碟"亮斑——已移除）
+    // 底部前脚（真实 Mac 的后仰站姿）
+    const footWedge = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 0.9), M(0xa89878, 0.55));
+    footWedge.position.set(0, -1.36, 0.35); footWedge.castShadow = true; crt.add(footWedge);
 
-    crt.position.set(0, 1.28, -0.35);
+    crt.position.set(0, 1.5, -0.35);
     this.scene.add(crt);
 
     // ---------- 键盘（拟真版）：阶梯宽窄布局 + 双色键帽 + 微倾角 + 指示灯 + 连接线 ----------
@@ -557,7 +592,7 @@ class HeroScene {
         new THREE.Vector3(0.35, 0.1, 1.4),
         new THREE.Vector3(0.95, 0.05, 1.75),
         new THREE.Vector3(1.35, 0.28, 1.05),
-        new THREE.Vector3(1.1, 0.45, 0.5),
+        new THREE.Vector3(1.1, 0.75, 0.35),
       ]), 28, 0.017, 8), M(0x2b2b30, 0.45));
     cable.castShadow = true; this.scene.add(cable);
 
@@ -687,7 +722,7 @@ class InsideScene {
     const grid = new THREE.Mesh(new THREE.PlaneGeometry(70, 220, 1, 1), mat(/* glsl */`
       varying vec2 vUv; uniform float uTime; uniform vec2 uRes; uniform sampler2D uMouseW;
       void main() {
-        vec3 mw = texture2D(uMouseW, gl_FragCoord.xy / uRes);
+        vec3 mw = texture2D(uMouseW, gl_FragCoord.xy / uRes).rgb;
         vec2 mdir = mw.rg * 2.0 - 1.0;
         vec2 guv = vUv + mdir * mw.b * 0.010;            // 拖尾轻推网格坐标
         vec2 g = abs(fract(vec2(guv.x * 35.0, guv.y * 110.0 + uTime * 2.0)) - 0.5);
@@ -696,7 +731,7 @@ class InsideScene {
         float fade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
         vec3 col = mix(vec3(0.0, 0.35, 0.18), vec3(0.2, 1.0, 0.55), line);
         gl_FragColor = vec4(col * line * 1.6 * fade + col * 0.04 + vec3(0.1, 0.5, 0.3) * mw.b * fade, 1.0);
-      }`, { uMouseW: { value: null } }));
+      }`, { uMouseW: { value: null }, __tag: "insideGrid" }));
     grid.rotation.x = -Math.PI / 2; grid.position.y = -2.6; this.scene.add(grid);
     this.gridMat = grid.material;
 
@@ -790,8 +825,8 @@ class InsideScene {
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float noise(vec2 p) {
         vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x),
-                   mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
       }
       void main() {
         vec2 suv = gl_FragCoord.xy / uRes;              // 屏幕空间，而非 UV
@@ -916,12 +951,13 @@ const composeMat = mat(/* glsl */`
   vec2 lensBarrel(vec2 uv, float k) {
     vec2 i = uv - 0.5;
     float n = dot(i, i);
-    return (1.0 - k) * (i * (1.0 + n * k) + 0.5) + k * 0.5;
+    vec2 scaled = (vec2(1.0 - k)) * (i * (1.0 + n * k) + vec2(0.5));
+    return scaled + vec2(k * 0.5);
   }
   /* 圆角矩形 SDF（参考其 SampleComposeTexture 的 rounded 采样遮罩） */
   float sdRound(vec2 p, vec2 b, float r) {
-    vec2 q = abs(p) - b + r;
-    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+    vec2 q = abs(p) - (b - vec2(r));
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
   }
   void main() {
     // 参考站零抖动：不做片门位移
@@ -971,8 +1007,7 @@ const composeMat = mat(/* glsl */`
   }`, {
   uSceneA: { value: null }, uSceneB: { value: null },
   uSwap: { value: 0 }, uFilm: { value: 1 }, uGlass: { value: 0 }, uGlassFlash: { value: 0 }, uContact: { value: 0 },
-  uAberr: { value: 1.4 }, uAspect: { value: 1 }, uMouseW: { value: null },
-});
+  uAberr: { value: 1.4 }, uAspect: { value: 1 }, uMouseW: { value: null }, __tag: "compose" });
 
 /* ---------- bloom：UE4 式 mip 金字塔（skyworks 技法）----------
    4-tap 半纹素降采样 ×3 级（亮度阈值熔进首级，省全分辨率 pass）
@@ -990,7 +1025,7 @@ const downFirstMat = mat(/* glsl */`
       c += t * smoothstep(0.72, 0.78, l); // preFilter：熔进首级降采样
     }
     gl_FragColor = vec4(c * 0.25, 1.0);
-  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() } });
+  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() }, __tag: "bloomDownFirst" });
 
 const downMat = mat(/* glsl */`
   uniform sampler2D uTex; uniform vec2 uTexel;
@@ -1000,7 +1035,7 @@ const downMat = mat(/* glsl */`
     vec3 c = texture2D(uTex, vUv + h * vec2(-1., 1.)).rgb + texture2D(uTex, vUv + h * vec2(1., 1.)).rgb
            + texture2D(uTex, vUv + h * vec2(-1., -1.)).rgb + texture2D(uTex, vUv + h * vec2(1., -1.)).rgb;
     gl_FragColor = vec4(c * 0.25, 1.0);
-  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() } });
+  }`, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() }, __tag: "bloomDown" });
 
 const upMat = mat(/* glsl */`
   uniform sampler2D uTex; uniform sampler2D uSupport; uniform vec2 uTexel; uniform float uRadius;
@@ -1010,7 +1045,7 @@ const upMat = mat(/* glsl */`
     vec3 f = texture2D(uTex, vUv + h * vec2(-1., 1.)).rgb + texture2D(uTex, vUv + h * vec2(1., 1.)).rgb
            + texture2D(uTex, vUv + h * vec2(-1., -1.)).rgb + texture2D(uTex, vUv + h * vec2(1., -1.)).rgb;
     gl_FragColor = vec4(mix(texture2D(uSupport, vUv).rgb, f * 0.25, uRadius), 1.0);
-  }`, { uTex: { value: null }, uSupport: { value: null }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 0.85 } });
+  }`, { uTex: { value: null }, uSupport: { value: null }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 0.85 }, __tag: "bloomUp" });
 
 /* ---------- 鼠标权重通道（skyworks 技法）----------
    乒乓 FBO 反馈拖尾：胶囊线段 SDF 落笔（快速移动不断线）×速度强度，
@@ -1022,19 +1057,19 @@ const mouseMat = mat(/* glsl */`
   void main() {
     vec2 a = uPrevMouse; vec2 b = uMouse; // 均为 0..1
     vec2 ab = b - a;
-    float t = clamp(dot(vUv - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+    float t = clamp(dot(vUv - a, ab) / max(dot(ab, ab), 0.000001), 0.0, 1.0);
     float line = 1.0 - smoothstep(0.03, 0.16, length(vUv - (a + ab * t)));
     float ptr = 1.0 - smoothstep(0.0, 0.22, length(vUv - b));
     float stamp = max(line, ptr) * 1.2 * uVel;
     vec3 prev = texture2D(uPrev, vUv).rgb;
     float w = max(prev.b * pow(0.2, uDelta), stamp);
     vec2 dir = mix(prev.rg, uDir * 0.5 + 0.5, clamp(stamp, 0.0, 1.0));
-    gl_FragColor = vec4(dir, w);
+    gl_FragColor = vec4(dir, w, 1.0);
   }`, {
   uPrev: { value: null }, uMouse: { value: new THREE.Vector2(0.5, 0.5) },
   uPrevMouse: { value: new THREE.Vector2(0.5, 0.5) }, uDir: { value: new THREE.Vector2(0, 1) },
   uVel: { value: 0 }, uDelta: { value: 1 / 60 },
-});
+  __tag: "mouseWeight", });
 
 /* 弹簧积分器（等价 Motion 的 stiffness/damping，零依赖） */
 function makeSpring(k, c) {
@@ -1073,8 +1108,7 @@ const finalMat = mat(/* glsl */`
     gl_FragColor = vec4(col, 1.0);
   }`, {
   uScene: { value: null }, uBloom: { value: null },
-  uBloomAmt: { value: 0 }, uDip: { value: 0 }, uScan: { value: 0.1 }, uGrain: { value: 0.035 }, uVig: { value: 0.75 },
-});
+  uBloomAmt: { value: 0 }, uDip: { value: 0 }, uScan: { value: 0.1 }, uGrain: { value: 0.035 }, uVig: { value: 0.75 }, __tag: "final" });
 
 const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
@@ -1160,12 +1194,12 @@ const hint = document.getElementById('hint');
 const loader = document.getElementById('loader');
 
 // 预热：每个场景先渲一帧，保证 FBO 有内容可供链上采样
-window.__boot && window.__boot(0.74, '正在编译着色器…');
+window.__boot && window.__boot(0.74);
 const state0 = { progress: 0, time: 0 };
 let texA = scenes[0].render(state0, scenes[1].fbo.texture);
 let texB = scenes[1].render(state0, scenes[2].fbo.texture);
 scenes[2].render(state0, null);
-window.__boot && window.__boot(1, '信号已锁定');
+window.__boot && window.__boot(1);
 setTimeout(() => {
   if (REDUCED || matchMedia('(prefers-reduced-motion: reduce)').matches) { loader.remove(); return; }
   loader.classList.add('off'); // CRT 关屏动画，曲线压成亮线后移除
