@@ -205,49 +205,59 @@ window.__TIER = TIER; // 诊断：控制台可查当前设备档
 const easeInOutQuart = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2);
 const expoOut = (t) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
 
-/* ---------------- 滚动 ---------------- */
+/* ---------------- 滚动 + 吸附（自研轻量平滑器，替代 Lenis）----------------
+   Lenis 1.3.4 在部分环境出现不可复现的滚轮假死（isScrolling 卡 'smooth'，target 不更新）。
+   自研：滚轮→target±delta（带吸附区方向倍率），帧内 lerp 到 target，原生滚动条/触屏经 scroll 事件同步。
+   吸附机制还原参考站 snapPoints：锚点前 0.05 区间 ×1.8 吸入，刚越过 ×0.3 缓冲，键盘跳锚。 */
 let progress = 0;
-const lenis = new Lenis({ lerp: 0.09, smoothWheel: true });
-lenis.on('scroll', (e) => { progress = clamp(e.scroll / Math.max(1, e.limit), 0, 1); });
-(function raf(t) { lenis.raf(t); requestAnimationFrame(raf); })(0);
-
-/* ---------------- 吸附系统（还原参考站 snapPoints 机制：方向性速度倍率，非硬吸附） ----------------
-   参考站 bundle 实测：锚点前 0.10 区间滚轮×2.2 吸入加速，刚越过 0.04 区间×0.35 缓冲；
-   键盘直接跳锚点；触屏/native 滚动豁免。 */
 const SNAPS = [
   { id: '信号', p: 0 },
   { id: '屏内', p: 0.52 },
   { id: '终章', p: 0.97 },
 ];
-function snapMultiplier(dy) {
-  const limit = Math.max(1, lenis.limit);
-  const cur = lenis.targetScroll / limit;
-  const dir = dy >= 0 ? 1 : -1;
-  let m = 1;
-  for (const s of SNAPS) {
-    const d = (s.p - cur) * dir; // 锚点在滚动方向上的有符号距离
-    if (d > 0 && d <= 0.05) m = Math.max(m, 1.8);       // 前方近锚：吸入加速（窄区）
-    if (d <= 0 && d >= -0.05) m = Math.min(m, 0.3);     // 刚越过：缓冲停靠
-  }
-  return m;
-}
+const scroller = {
+  limit: 1, target: 0, current: 0,
+  measure() {
+    this.limit = Math.max(1, (document.body.scrollHeight - innerHeight));
+    this.target = clamp(this.target, 0, this.limit);
+  },
+  multiplier(dy) { // 吸附区方向倍率（按事件方向，参考站做法）
+    const cur = this.current / this.limit;
+    const dir = dy >= 0 ? 1 : -1;
+    let m = 1;
+    for (const s of SNAPS) {
+      const d = (s.p - cur) * dir;
+      if (d > 0 && d <= 0.05) m = Math.max(m, 1.8);    // 前方近锚：吸入加速
+      if (d <= 0 && d >= -0.05) m = Math.min(m, 0.3);  // 刚越过：缓冲停靠
+    }
+    return m;
+  },
+  wheel(dy) { this.target = clamp(this.target + dy * this.multiplier(dy), 0, this.limit); },
+  tick(dt) {
+    const k = REDUCED ? 1 : 1 - Math.pow(1 - 0.09, dt * 60); // 帧率无关的 lerp 0.09
+    this.current += (this.target - this.current) * k;
+    if (Math.abs(this.target - this.current) < 0.5) this.current = this.target;
+    window.scrollTo(0, this.current);
+    progress = clamp(this.current / this.limit, 0, 1);
+  },
+};
+addEventListener('scroll', () => { // 原生滚动（滚动条拖动/触屏）同步进虚拟目标
+  if (Math.abs(window.scrollY - scroller.current) > 2) scroller.target = scroller.current = window.scrollY;
+}, { passive: true });
 addEventListener('wheel', (e) => {
-  if (REDUCED || e.ctrlKey) return; // 缩放手势/降级直通
+  if (e.ctrlKey) return; // 缩放手势直通
   e.preventDefault();
-  e.stopImmediatePropagation(); // 接管 Lenis 的默认滚轮，改走倍率通道
-  const boosted = e.deltaY * snapMultiplier(e.deltaY);
-  lenis.scrollTo(lenis.targetScroll + clamp(boosted, -900, 900)); // 单次增益封顶
-}, { passive: false, capture: true });
+  scroller.wheel(clamp(e.deltaY, -900, 900)); // 单次增益封顶
+}, { passive: false });
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const limit = Math.max(1, lenis.limit);
-  const cur = lenis.animatedScroll / limit;
+  const cur = scroller.current / scroller.limit;
   let target = null;
   if (e.key === 'ArrowDown' || e.key === 'PageDown') target = SNAPS.find((s) => s.p > cur + 0.01);
   if (e.key === 'ArrowUp' || e.key === 'PageUp') target = [...SNAPS].reverse().find((s) => s.p < cur - 0.01);
   if (e.key === 'Home') target = SNAPS[0];
   if (e.key === 'End') target = { p: 1 };
-  if (target) { e.preventDefault(); lenis.scrollTo(target.p * limit, { duration: REDUCED ? 0.4 : 1.5 }); }
+  if (target) { e.preventDefault(); scroller.target = target.p * scroller.limit; }
 });
 
 /* ---------------- 鼠标视差 ---------------- */
@@ -428,33 +438,35 @@ class HeroScene {
     floor.rotation.x = -Math.PI / 2; floor.position.y = -3.55; floor.receiveShadow = true;
     this.scene.add(floor);
 
-    // Macintosh 一体机（对照真实 128K/SE 造型）：前宽后窄梯形箱体 + 大圆角 + 屏下条带 + 软盘缝
+    // Macintosh 一体机（对照真实 128K/SE 造型）：圆角主箱体 + 后部收窄块（干净几何，无自交轮廓）
     const crt = new THREE.Group();
-    // 箱体：梯形轮廓（前 2.7 宽、后 2.05 宽）× 2.55 高，深 2.2——正面朝 +z
-    const trapPrism = (wF, wB, h, depth, r) => {
-      const s = new THREE.Shape();
-      const hw = wF / 2, inset = (wF - wB) / 2;
-      s.moveTo(-hw + r, 0);
-      s.lineTo(hw - r, 0); s.quadraticCurveTo(hw, 0, hw - inset * 0.2, r); // 右下角
-      s.lineTo(hw - inset, h - r);                                         // 右侧内收到后宽
-      s.quadraticCurveTo(hw - inset, h, hw - inset - r, h);                // 右上角
-      s.lineTo(-hw + inset + r, h);                                        // 顶边
-      s.quadraticCurveTo(-hw + inset, h, -hw + inset, h - r);              // 左上角
-      s.lineTo(-hw + inset * 0.2, r);                                      // 左侧
-      s.quadraticCurveTo(-hw, 0, -hw + r, 0);                              // 左下角
-      const g = new THREE.ExtrudeGeometry(s, {
-        depth, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.06,
-        bevelSegments: 3, curveSegments: 8,
-      });
-      g.translate(0, 0, -depth / 2);
-      return g;
+    const roundedRectShape = (w, h, r) => {
+      const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+      return s;
     };
-    const shell = new THREE.Mesh(trapPrism(2.7, 2.05, 2.55, 2.2, 0.28), beige);
-    shell.castShadow = true;
-    crt.add(shell);
+    // 前段主箱体：正面 2.7×2.55、深 1.5、大圆角
+    const shellFront = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRectShape(2.7, 2.55, 0.3), {
+      depth: 1.5, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
+      bevelSegments: 3, curveSegments: 10,
+    }), beige);
+    shellFront.geometry.translate(0, 0, -0.75); // 前表面 z=+0.75
+    shellFront.castShadow = true; crt.add(shellFront);
+    // 后段收窄块：更窄更矮，形成"前宽后窄"的 Mac 轮廓
+    const shellRear = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRectShape(2.1, 2.2, 0.24), {
+      depth: 0.85, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
+      bevelSegments: 3, curveSegments: 10,
+    }), beige);
+    shellRear.geometry.translate(0, 0.06, -0.425); // 前表面 z=-0.75+ε，与主箱体后表面重叠咬合
+    shellRear.position.z = -0.78;
+    shellRear.castShadow = true; crt.add(shellRear);
     // 屏幕 bezel：正面面板
-    const facePlate = new THREE.Mesh(new THREE.BoxGeometry(2.45, 2.05, 0.1), M(0xcbbd9c, 0.6));
-    facePlate.position.set(0, 0.32, 1.12); facePlate.castShadow = true; crt.add(facePlate);
+    const facePlate = new THREE.Mesh(new THREE.BoxGeometry(2.45, 1.95, 0.1), M(0xcbbd9c, 0.6));
+    facePlate.position.set(0, 0.32, 0.78); facePlate.castShadow = true; crt.add(facePlate);
     // 屏下条带：铭牌居中 + 电源 LED 右侧（真实 Mac 的布局）
     const logo = makeCanvasTexture(512, 48, (ctx, c) => {
       ctx.fillStyle = '#cbbd9c'; ctx.fillRect(0, 0, c.width, c.height);
@@ -1132,8 +1144,9 @@ function updateMouseWeight(t) {
   const dt = Math.min(t - mwState.last || 1 / 60, 1 / 30);
   mwState.last = t;
   const prevX = mwState.px, prevY = mwState.py; // 上一帧弹簧输出
+  // y 翻转：clientY 是 top-down，GL 纹理 uv 是 bottom-up——不翻会导致轨迹垂直镜像（"反向轨迹"）
   const px = mwSprings.x.step((mouse.x + 1) / 2, dt);
-  const py = mwSprings.y.step((mouse.y + 1) / 2, dt);
+  const py = mwSprings.y.step(1 - (mouse.y + 1) / 2, dt);
   const ddx = px - prevX, ddy = py - prevY;
   const dl = Math.hypot(ddx, ddy);
   if (dl > 1e-4) { mwSprings.dx.step(ddx / dl, dt); mwSprings.dy.step(ddy / dl, dt); }
