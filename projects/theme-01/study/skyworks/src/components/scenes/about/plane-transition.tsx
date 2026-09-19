@@ -1,7 +1,6 @@
-import { Environment, useGLTF } from "@react-three/drei";
+import { Environment } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
-import { type RefObject, useImperativeHandle, useMemo, useRef } from "react";
-import { Mesh } from "three";
+import { type RefObject, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 import { clamp, mapLinear } from "three/src/math/MathUtils.js";
 import {
   atan,
@@ -21,13 +20,12 @@ import {
   vec3,
   vec4,
 } from "three/tsl";
-import { CatmullRomCurve3, type Group, MeshBasicNodeMaterial, MeshStandardNodeMaterial, Texture, Vector3 } from "three/webgpu";
+import { BoxGeometry, CatmullRomCurve3, Group, Mesh, MeshBasicNodeMaterial, MeshStandardNodeMaterial, Texture, Vector3 } from "three/webgpu";
 import { useResolutionUniform } from "@/components/utils/use-resolution-uniform";
 
 export type PlaneTransitionUpdateHandle = (args: { progress: number; nextSceneTexture: Texture | null }) => void;
 
 export function PlaneTransition({ updateHandle }: { updateHandle: RefObject<PlaneTransitionUpdateHandle | null> }) {
-  const planeModel = useGLTF("/airplane.glb");
   const pathGroupRef = useRef<Group>(null);
   const planeGroupRef = useRef<Group>(null);
 
@@ -54,15 +52,33 @@ export function PlaneTransition({ updateHandle }: { updateHandle: RefObject<Plan
     // })();
     return mat;
   }, []);
+  /* 像素鸽载具：方块拼装（替换 airplane.glb），双翼扇动，暗金属渐隐材质照旧 */
+  const wingLRef = useRef<Mesh>(null);
+  const wingRRef = useRef<Mesh>(null);
   const planeScene = useMemo(() => {
-    const scene = planeModel.scene.clone(true);
-    scene.traverse((object) => {
-      if (object instanceof Mesh) {
-        object.material = planeMaterial;
-      }
-    });
-    return scene;
-  }, [planeModel.scene, planeMaterial]);
+    const scene = new Group();
+    const part = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+      const mesh = new Mesh(new BoxGeometry(w, h, d), planeMaterial);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      return mesh;
+    };
+    part(1.0, 0.9, 2.3, 0, 0, 0);
+    part(0.8, 0.8, 0.8, 0, 0.25, 1.4);
+    part(0.25, 0.25, 0.5, 0, 0.2, 2.0);
+    part(0.7, 0.55, 1.0, 0, 0.1, -1.6);
+    const wingLGeo = new BoxGeometry(1.1, 0.14, 2.4);
+    wingLGeo.translate(0.55, 0, 0);
+    const wingL = new Mesh(wingLGeo, planeMaterial);
+    wingL.position.set(0.55, 0.45, -0.1);
+    scene.add(wingL);
+    const wingRGeo = new BoxGeometry(1.1, 0.14, 2.4);
+    wingRGeo.translate(-0.55, 0, 0);
+    const wingR = new Mesh(wingRGeo, planeMaterial);
+    wingR.position.set(-0.55, 0.45, -0.1);
+    scene.add(wingR);
+    return { scene, wingL, wingR };
+  }, [planeMaterial]);
 
   const timeUniform = useRef(uniform(0));
   const transitionUniform = useRef(uniform(0));
@@ -102,6 +118,11 @@ export function PlaneTransition({ updateHandle }: { updateHandle: RefObject<Plan
   const progressUniform = useRef(uniform(0));
 
   const clock = useThree((state) => state.clock);
+
+  useLayoutEffect(() => {
+    wingLRef.current = planeScene.wingL;
+    wingRRef.current = planeScene.wingR;
+  }, [planeScene]);
   useImperativeHandle(updateHandle, () => ({ progress, nextSceneTexture }) => {
     const pathGroup = pathGroupRef.current;
     const planeGroup = planeGroupRef.current;
@@ -123,7 +144,10 @@ export function PlaneTransition({ updateHandle }: { updateHandle: RefObject<Plan
     planeGroup.position.copy(planePosition);
     planeGroup.up.set(0, 1, 0);
     planeGroup.lookAt(planeTarget);
-    planeGroup.rotateY(Math.PI / 2 - 0.1);
+    const t = clock.getElapsedTime();
+    const flap = Math.sin(t * 8) * 0.55;
+    if (wingLRef.current) wingLRef.current.rotation.z = flap;
+    if (wingRRef.current) wingRRef.current.rotation.z = -flap;
   });
 
   return (
@@ -131,8 +155,8 @@ export function PlaneTransition({ updateHandle }: { updateHandle: RefObject<Plan
       <group ref={pathGroupRef} position={[0, 0, 0]}>
         <group ref={planeGroupRef}>
           <group rotation={[-0.04, 0.1035, -0.207]}>
-            <primitive object={planeScene} scale={2} />
-            <mesh position={[-4.7, -0.5, 0]} rotation={[0, -Math.PI / 2, 0]} material={transitionMaterial}>
+            <primitive object={planeScene.scene} scale={2} />
+            <mesh position={[0, 0.1, -1.7]} rotation={[0, -Math.PI / 2, 0]} material={transitionMaterial}>
               <planeGeometry args={[0.2, 0.2]} />
             </mesh>
           </group>
