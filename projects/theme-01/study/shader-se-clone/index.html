@@ -382,37 +382,135 @@ const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
 if (!REDUCED) setInterval(() => boot.repaint(Math.floor(Date.now() / 500) % 2 === 0), 500);
 repaintFns.push(() => boot.repaint(true));
 
-/* 学习卡片（终端绿，中文） */
+/* 屏内精排页：shader.se 式编辑部排版——纸页、衬线大标题、细线、矢量图解、页码 */
+const SERIF = 'Georgia, "Times New Roman", "Songti SC", serif';
+const MONO = '"IBM Plex Mono", "Songti SC", monospace';
+const wrapZh = (ctx, text, x, y, n, lh) => {
+  for (let i = 0; i * n < text.length; i++) ctx.fillText(text.slice(i * n, i * n + n), x, y + i * lh);
+};
 const STUDIES = [
-  ['研究 01 · 选择性渲染', '视野外的场景，零 draw call'],
-  ['研究 02 · FBO 链', '场景倒序渲染，逐级喂给下一场景'],
-  ['研究 03 · 视锥匹配', '相机飞到恰好铺满屏幕的距离'],
-  ['研究 04 · 屏幕空间', '过渡按片元坐标采样下一场景'],
-  ['研究 05 · 渲染偏移', '你到达之前，下一帧已备好'],
-  ['研究 06 · 一根滚动条', '滚动位置驱动所有 uniform'],
+  ['选择性渲染', 'SELECTIVE RENDERING', '相机背后的世界不必存在。视野之外的物体在提交前就被剔除，一帧只画你看见的部分。'],
+  ['FBO 倒序链', 'REVERSE FBO CHAIN', '尽头先画，屏内次之，桌面最后。每个场景渲染进纹理，再作为下一场景的背景逐级下传。'],
+  ['视锥匹配', 'FIT THE FRUSTUM', '相机被推到恰好让虚拟屏幕铺满画面之处，穿屏的一瞬没有缝隙，也没有跳变。'],
+  ['屏幕空间过渡', 'SCREEN-SPACE BLEND', '过渡不依赖模型，而按片元坐标采样下一场景——噪声阈值推进，像素逐粒点亮新世界。'],
+  ['渲染偏移', 'RENDER AHEAD', '你到达之前，下一帧已经备好。滚动读取的是提前量，画面因此永远先你半步。'],
+  ['一根滚动条', 'ONE SCROLLBAR', '没有动画库。滚动位置是唯一的时间轴，所有 uniform 由它驱动，滚动条即导演。'],
 ];
-const cardTextures = STUDIES.map(([title, sub]) => makeCanvasTexture(512, 320, (ctx, c) => {
-  ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.strokeStyle = '#1d7a48'; ctx.lineWidth = 3; ctx.strokeRect(10, 10, c.width - 20, c.height - 20);
-  ctx.fillStyle = '#39ff88'; ctx.font = 'bold 30px "IBM Plex Mono", "Songti SC", monospace';
-  ctx.fillText(title, 34, 70);
-  ctx.fillStyle = '#9adfb8'; ctx.font = '24px "IBM Plex Mono", "Songti SC", monospace';
-  sub.match(/.{1,15}/g)?.forEach((s, i) => ctx.fillText(s, 34, 130 + i * 36));
-  ctx.fillStyle = '#1d7a48'; ctx.font = '20px "IBM Plex Mono", "Songti SC", monospace';
-  ctx.fillText('iiiiiei // 公开管线的学习复刻', 34, c.height - 36);
+/* 每页一幅矢量图解（钢笔线稿，刊物插图风） */
+const DIAGRAMS = [
+  (ctx, x, y, w, h) => { // 视锥
+    ctx.beginPath(); ctx.arc(x + w * 0.12, y + h / 2, 5, 0, 7); ctx.fill();
+    ctx.strokeRect(x + w * 0.62, y + h * 0.14, w * 0.3, h * 0.72);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.15, y + h / 2); ctx.lineTo(x + w * 0.62, y + h * 0.14);
+    ctx.moveTo(x + w * 0.15, y + h / 2); ctx.lineTo(x + w * 0.62, y + h * 0.86);
+    ctx.stroke();
+  },
+  (ctx, x, y, w, h) => { // 倒序链 A←B←C
+    const bw = w * 0.17, bh = h * 0.5, gap = w * 0.155;
+    ['A', 'B', 'C'].forEach((ch, i) => {
+      const bx = x + w * 0.1 + i * (bw + gap);
+      ctx.strokeRect(bx, y + h * 0.25, bw, bh);
+      ctx.font = '600 ' + Math.round(h * 0.3) + 'px ' + MONO; ctx.textAlign = 'center';
+      ctx.fillText(ch, bx + bw / 2, y + h * 0.25 + bh * 0.66); ctx.textAlign = 'left';
+      if (i < 2) { const ax = bx + bw + 4;
+        ctx.beginPath(); ctx.moveTo(ax + gap - 12, y + h / 2); ctx.lineTo(ax, y + h / 2);
+        ctx.moveTo(ax + 9, y + h / 2 - 6); ctx.lineTo(ax, y + h / 2); ctx.lineTo(ax + 9, y + h / 2 + 6);
+        ctx.stroke(); }
+    });
+  },
+  (ctx, x, y, w, h) => { // 视锥贴合屏幕
+    ctx.strokeRect(x + w * 0.55, y + h * 0.16, w * 0.34, h * 0.68);
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.1, y + h / 2); ctx.lineTo(x + w * 0.55, y + h * 0.16);
+    ctx.lineTo(x + w * 0.55, y + h * 0.84); ctx.closePath(); ctx.stroke();
+  },
+  (ctx, x, y, w, h) => { // 像素网格逐粒点亮
+    const cols = 12, rows = 5, cw = w * 0.7 / cols, ch2 = h * 0.62 / rows;
+    const ox = x + w * 0.15, oy = y + h * 0.19;
+    for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) {
+      const lit = (q * 7 + r * 13) % 5 < 2;
+      ctx.fillStyle = lit ? '#23201a' : 'rgba(35,32,26,.18)';
+      ctx.fillRect(ox + q * cw + 1, oy + r * ch2 + 1, cw - 2.5, ch2 - 2.5);
+    }
+  },
+  (ctx, x, y, w, h) => { // 时间轴提前量
+    ctx.beginPath(); ctx.moveTo(x + w * 0.08, y + h * 0.62); ctx.lineTo(x + w * 0.92, y + h * 0.62); ctx.stroke();
+    ctx.fillStyle = '#23201a'; ctx.fillRect(x + w * 0.08, y + h * 0.24, w * 0.5, h * 0.14);
+    ctx.fillStyle = 'rgba(35,32,26,.4)'; ctx.fillRect(x + w * 0.3, y + h * 0.44, w * 0.5, h * 0.1);
+    ctx.fillStyle = '#23201a'; ctx.font = Math.round(h * 0.2) + 'px ' + MONO; ctx.textAlign = 'right';
+    ctx.fillText('提前', x + w * 0.3, y + h * 0.92); ctx.textAlign = 'left';
+  },
+  (ctx, x, y, w, h) => { // 一根滚动条
+    ctx.strokeRect(x + w * 0.08, y + h * 0.34, w * 0.84, h * 0.3);
+    ctx.fillStyle = '#23201a'; ctx.fillRect(x + w * 0.08, y + h * 0.34, w * 0.84, h * 0.09);
+    ctx.fillStyle = 'rgba(35,32,26,.3)';
+    for (let q = 0; q < 5; q++) ctx.fillRect(x + w * (0.2 + q * 0.15), y + h * 0.72, 2, h * 0.12);
+  },
+];
+const cardTextures = STUDIES.map(([title, en, body], i) => makeCanvasTexture(640, 800, (ctx, c) => {
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.62);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(70,58,34,.16)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  let seed = i * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 220; k++) { ctx.fillStyle = 'rgba(115,104,82,' + (rnd() * 0.08).toFixed(3) + ')'; ctx.fillRect(rnd() * W, rnd() * H, 1.6, 1.6); }
+  const INK = '#23201a';
+  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2;
+  try { ctx.letterSpacing = '3px'; } catch (e) {}
+  ctx.font = '600 19px ' + MONO; ctx.fillStyle = '#6b6552';
+  ctx.fillText('IIIIIEI · 管线研究 — STUDY 0' + (i + 1), 56, 82);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+  ctx.beginPath(); ctx.moveTo(56, 104); ctx.lineTo(W - 56, 104); ctx.stroke();
+  ctx.fillStyle = 'rgba(35,32,26,.08)'; ctx.font = '700 200px ' + SERIF; ctx.textAlign = 'right';
+  ctx.fillText('0' + (i + 1), W - 40, 250); ctx.textAlign = 'left';
+  ctx.fillStyle = INK; ctx.font = '700 64px ' + SERIF;
+  ctx.fillText(title, 54, 218);
+  ctx.font = '500 20px ' + MONO; ctx.fillStyle = '#8a8370';
+  try { ctx.letterSpacing = '4px'; } catch (e) {}
+  ctx.fillText(en, 56, 262);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(56, 296); ctx.lineTo(W - 56, 296); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(56, 302); ctx.lineTo(W - 56, 302); ctx.stroke();
+  ctx.fillStyle = '#3a362c'; ctx.font = '400 25px ' + SERIF;
+  wrapZh(ctx, body, 56, 366, 19, 40);
+  ctx.strokeStyle = 'rgba(35,32,26,.5)'; ctx.lineWidth = 1;
+  ctx.strokeRect(56, 560, W - 112, 170);
+  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2;
+  DIAGRAMS[i](ctx, 56, 560, W - 112, 170);
+  ctx.beginPath(); ctx.moveTo(56, 736); ctx.lineTo(W - 56, 736); ctx.stroke();
+  ctx.font = '500 19px ' + MONO; ctx.fillStyle = '#6b6552';
+  ctx.fillText('iiiiiei.com', 56, 772);
+  ctx.textAlign = 'right'; ctx.fillText('0' + (i + 1) + ' / 06', W - 56, 772); ctx.textAlign = 'left';
 }));
 cardTextures.forEach((t) => repaintFns.push(() => t.repaint()));
 
-/* 终章大字 */
+/* 终章版权页：与屏内纸页同一套编辑部语言 */
 const endTitle = makeCanvasTexture(1024, 512, (ctx, c) => {
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#e8fff2'; ctx.font = 'bold 96px "IBM Plex Mono", "Songti SC", monospace';
-  ctx.fillText('传输结束', c.width / 2, 210);
-  ctx.fillStyle = '#39ff88'; ctx.font = '30px "IBM Plex Mono", "Songti SC", monospace';
-  ctx.fillText('这条管线现在属于 iiiiiei.com', c.width / 2, 300);
-  ctx.fillStyle = '#2a5c41'; ctx.font = '24px "IBM Plex Mono", "Songti SC", monospace';
-  ctx.fillText('谢谢你一路滚过这台机器', c.width / 2, 370);
+  const W = c.width, H = c.height, INK = '#23201a';
+  ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.24, W / 2, H / 2, H * 0.72);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(70,58,34,.15)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  let seed = 20260919; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 160; k++) { ctx.fillStyle = 'rgba(115,104,82,' + (rnd() * 0.08).toFixed(3) + ')'; ctx.fillRect(rnd() * W, rnd() * H, 1.6, 1.6); }
+  ctx.textAlign = 'center'; ctx.fillStyle = INK;
+  ctx.font = '700 104px ' + SERIF;
+  ctx.fillText('传输结束。', W / 2, 178);
+  ctx.lineWidth = 1.6; ctx.strokeStyle = INK;
+  ctx.beginPath(); ctx.moveTo(W / 2 - 210, 224); ctx.lineTo(W / 2 + 210, 224); ctx.stroke();
+  ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(W / 2 - 210, 230); ctx.lineTo(W / 2 + 210, 230); ctx.stroke();
+  ctx.font = '400 36px ' + SERIF;
+  ctx.fillText('这条管线现在属于 iiiiiei.com', W / 2, 300);
+  ctx.font = '500 23px ' + MONO; ctx.fillStyle = '#6b6552';
+  try { ctx.letterSpacing = '3px'; } catch (e) {}
+  ctx.fillText('GITHUB · GITHUB.COM/IIIIIEI', W / 2, 372);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+  ctx.font = 'italic 400 27px ' + SERIF; ctx.fillStyle = '#8a8370';
+  ctx.fillText('谢谢你一路滚过这台机器。', W / 2, 442);
+  ctx.textAlign = 'left';
 });
 repaintFns.push(() => endTitle.repaint());
 
@@ -852,7 +950,7 @@ class InsideScene {
 
     // 学习卡片：两侧交错，随相机前进逐一掠过
     this.cards = cardTextures.map(({ tex }, i) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 1.44),
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.78, 2.225), // 竖开本 640×800
         new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
       const side = i % 2 === 0 ? -1 : 1;
       m.position.set(side * 3.1, 0.4 + (i % 3) * 0.5, -4 - i * 4.4);
@@ -863,11 +961,19 @@ class InsideScene {
       return m;
     });
 
-    // 次元横幅
+    // 章节横幅：与纸页同语言的编辑部题头
     const banner = makeCanvasTexture(1024, 128, (ctx, c) => {
-      ctx.fillStyle = '#03130a'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.fillStyle = '#39ff88'; ctx.font = 'bold 56px "IBM Plex Mono", "Songti SC", monospace';
-      ctx.textAlign = 'center'; ctx.fillText('// 屏内信号 — 六项研究', c.width / 2, 82);
+      ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.strokeStyle = '#23201a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(24, 10); ctx.lineTo(c.width - 24, 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(24, c.height - 10); ctx.lineTo(c.width - 24, c.height - 10); ctx.stroke();
+      ctx.fillStyle = '#23201a'; ctx.font = '700 54px ' + SERIF; ctx.textAlign = 'left';
+      ctx.fillText('屏内信号', 44, 86);
+      ctx.font = '500 21px ' + MONO; ctx.fillStyle = '#6b6552'; ctx.textAlign = 'right';
+      try { ctx.letterSpacing = '4px'; } catch (e) {}
+      ctx.fillText('SIX STUDIES · INSIDE THE SIGNAL', c.width - 44, 80);
+      try { ctx.letterSpacing = '0px'; } catch (e) {}
+      ctx.textAlign = 'left';
     });
     repaintFns.push(() => banner.repaint());
     this.banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.75),
@@ -961,7 +1067,7 @@ class EndScene {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.dust = new THREE.Points(geo, new THREE.PointsMaterial({
-      color: 0x39ff88, size: 0.02, transparent: true, opacity: 0.55,
+      color: 0xcfc8b8, size: 0.02, transparent: true, opacity: 0.5,
     }));
     this.scene.add(this.dust);
   }
