@@ -1,6 +1,6 @@
 "use client";
 
-import { Stats, useProgress } from "@react-three/drei";
+import { useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { WebGPURendererParameters } from "three/src/renderers/webgpu/WebGPURenderer.Nodes.js";
@@ -175,7 +175,6 @@ export function Renderer() {
       >
         <LoadingTracker />
         <Main />
-        {process.env.NODE_ENV === "development" && <Stats />}
       </Canvas>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useFBO } from "@react-three/drei";
 import { createPortal } from "@react-three/fiber";
 import { type RefObject, useImperativeHandle, useMemo, useRef } from "react";
-import { Fn, mix, oneMinus, texture, uniform, uniformTexture, uv, vec2 } from "three/tsl";
-import { MeshBasicNodeMaterial, Texture } from "three/webgpu";
+import { Fn, abs, length, max, mix, oneMinus, smoothstep, texture, uniform, uniformTexture, uv, vec2, vec3 } from "three/tsl";
+import { MeshBasicNodeMaterial, Texture, Vector2 } from "three/webgpu";
+import { interactionState } from "@/components/demo/interaction";
 import type { RootStateWebGPU } from "@/types";
 import { usePostProcessing } from "../post-processing/use-post-processing";
 import { scrollPosition } from "../store";
@@ -27,6 +28,9 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
   const uniforms = useRef({
     textures: Array.from({ length: PAGES_COUNT }, () => uniformTexture(new Texture())),
     scrollPosition: uniform(0),
+    clickPos: uniform(new Vector2(0.5, 0.5)),
+    clickAge: uniform(10),
+    aspect: uniform(1),
   });
 
   const material = useMemo(() => {
@@ -34,10 +38,20 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
     mat.toneMapped = false;
 
     mat.colorNode = Fn(() => {
-      const firstTexture = texture(uniforms.current.textures[0], vec2(uv().x, oneMinus(uv().y)));
-      const secondTexture = texture(uniforms.current.textures[1], vec2(uv().x, oneMinus(uv().y)));
+      // 点击涟漪：扩张环扰动采样坐标 + 亮环（叠加在参考合成链上）
+      const p = uv().sub(0.5).mul(vec2(uniforms.current.aspect, 1));
+      const cp = uniforms.current.clickPos.sub(0.5).mul(vec2(uniforms.current.aspect, 1));
+      const dv = p.sub(cp);
+      const ringR = uniforms.current.clickAge.mul(0.8);
+      const ring = oneMinus(smoothstep(0.0, 0.06, abs(length(dv).sub(ringR))))
+        .mul(oneMinus(smoothstep(0.0, 0.85, uniforms.current.clickAge)));
+      const nrm = dv.div(max(length(dv), 0.0001));
+      const rippleUv = uv().sub(nrm.mul(ring.mul(0.022)));
 
-      return mix(secondTexture, firstTexture, firstTexture.a);
+      const firstTexture = texture(uniforms.current.textures[0], vec2(rippleUv.x, oneMinus(rippleUv.y)));
+      const secondTexture = texture(uniforms.current.textures[1], vec2(rippleUv.x, oneMinus(rippleUv.y)));
+      const col = mix(secondTexture, firstTexture, firstTexture.a);
+      return col.add(vec3(ring.mul(0.3)));
     })();
 
     return mat;
@@ -50,6 +64,9 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
     const u = uniforms.current;
 
     u.scrollPosition.value = scrollPosition.get();
+    u.clickPos.value.set(interactionState.clickX, interactionState.clickY);
+    u.clickAge.value = Math.min(10, Math.max(0, (performance.now() - interactionState.clickT) / 1000));
+    u.aspect.value = window.innerWidth / Math.max(1, window.innerHeight);
 
     for (let i = 0; i < PAGES_COUNT; i++) {
       const textureNode = u.textures[i];

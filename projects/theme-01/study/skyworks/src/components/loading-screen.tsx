@@ -2,27 +2,12 @@
 
 import { AnimatePresence, animate, motion, useMotionValueEvent } from "motion/react";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { introAnimationCompleted, introAnimationProgress, pageLoaded, pageLoadProgress } from "./store";
 
-function formatProgressLabel(value: number) {
-  return `Loading ${(value * 100).toFixed(0)}%`;
-}
-
 export function LoadingScreen() {
-  const labelRef = useRef<HTMLDivElement>(null);
   const [showOverlay, setShowOverlay] = useState(true);
   const [unmountRoot, setUnmountRoot] = useState(false);
-
-  useEffect(() => {
-    const el = labelRef.current;
-    if (el) el.textContent = formatProgressLabel(pageLoadProgress.get());
-  }, []);
-
-  useMotionValueEvent(pageLoadProgress, "change", (value) => {
-    const el = labelRef.current;
-    if (el) el.textContent = formatProgressLabel(value);
-  });
 
   useMotionValueEvent(pageLoaded, "change", (loaded) => {
     if (loaded) {
@@ -52,9 +37,6 @@ export function LoadingScreen() {
           transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
         >
           <Image src="/logo.svg" alt="logo" width={250} height={100} className="w-[150px] lg:w-[250px]" />
-          <div ref={labelRef} className="font-title text-2xl font-medium text-white">
-            Loading 0%
-          </div>
         </motion.div>
       )}
     </AnimatePresence>
