@@ -56,6 +56,15 @@
     letter-spacing: .14em; line-height: 1;
   }
   #loader .pct { margin-top: 22px; font-size: clamp(17px, 2.2vw, 23px); letter-spacing: .06em; }
+  #loader::before { /* 圆角遮罩窗（与站内屏窗同语言：窗外深色） */
+    content: ''; position: absolute; inset: 2.8%; border-radius: 5.5vh;
+    box-shadow: 0 0 0 120vmax #04050e; pointer-events: none;
+  }
+  #loader::after { /* 胶片噪点 + 边缘暗角（SVG 湍流，参考站 grain 的 DOM 近似） */
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"),
+      radial-gradient(ellipse at center, transparent 55%, rgba(2,3,12,.32) 100%);
+  }
   #loader.off { transition: opacity .5s ease; opacity: 0; pointer-events: none; }
 </style>
 <script type="importmap">
@@ -190,9 +199,10 @@ const scroller = {
     const dir = dy >= 0 ? 1 : -1;
     let m = 1;
     for (const s of SNAPS) {
+      if (s.p === 0 && dir > 0 && cur < 0.02) continue; // 起点不做缓冲：首滚必须顺滑（响应性根因）
       const d = (s.p - cur) * dir;
       if (d > 0 && d <= 0.05) m = Math.max(m, 1.8);    // 前方近锚：吸入加速
-      if (d <= 0 && d >= -0.05) m = Math.min(m, 0.3);  // 刚越过：缓冲停靠
+      if (d <= 0 && d >= -0.04) m = Math.min(m, 0.3);  // 刚越过：缓冲停靠（收窄）
     }
     return m;
   },
@@ -405,35 +415,38 @@ class HeroScene {
     floor.rotation.x = -Math.PI / 2; floor.position.y = -3.55; floor.receiveShadow = true;
     this.scene.add(floor);
 
-    // Macintosh 一体机（对照真实 128K/SE 造型）：圆角主箱体 + 后部收窄块（干净几何，无自交轮廓）
+    // Macintosh 一体机：单一圆角箱体 + 顶点级后部连续收坡（对照 128K，无台阶断裂）
     const crt = new THREE.Group();
     const roundedRectShape = (w, h, r) => {
-      const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
-      s.moveTo(x + r, y);
-      s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
-      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
-      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
-      return s;
+      const sh = new THREE.Shape(), x = -w / 2, y = -h / 2;
+      sh.moveTo(x + r, y);
+      sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r);
+      sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      sh.lineTo(x + r, y + h); sh.quadraticCurveTo(x, y + h, x, y + h - r);
+      sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y);
+      return sh;
     };
-    // 前段主箱体：正面 2.7×2.55、深 1.5、大圆角
-    const shellFront = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRectShape(2.7, 2.55, 0.3), {
-      depth: 1.5, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
+    const shellGeo = new THREE.ExtrudeGeometry(roundedRectShape(2.75, 2.38, 0.26), {
+      depth: 2.35, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
       bevelSegments: 3, curveSegments: 10,
-    }), beige);
-    shellFront.geometry.translate(0, 0, -0.75); // 前表面 z=+0.75
-    shellFront.castShadow = true; crt.add(shellFront);
-    // 后段收窄块：更窄更矮，形成"前宽后窄"的 Mac 轮廓
-    const shellRear = new THREE.Mesh(new THREE.ExtrudeGeometry(roundedRectShape(2.1, 2.2, 0.24), {
-      depth: 0.85, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05,
-      bevelSegments: 3, curveSegments: 10,
-    }), beige);
-    shellRear.geometry.translate(0, 0.06, -0.425); // 前表面 z=-0.75+ε，与主箱体后表面重叠咬合
-    shellRear.position.z = -0.78;
-    shellRear.castShadow = true; crt.add(shellRear);
-    // 屏幕 bezel：正面面板
-    const facePlate = new THREE.Mesh(new THREE.BoxGeometry(2.45, 1.95, 0.1), M(0xcbbd9c, 0.6));
-    facePlate.position.set(0, 0.32, 0.78); facePlate.castShadow = true; crt.add(facePlate);
+    });
+    shellGeo.translate(0, 0, -1.6); // 前表面 z=+0.75，后 z=-1.6
+    // 顶点收坡：z 越靠后 x 收得越窄（78%）、顶面微微后倾——真实 Mac 的连续斜肩
+    const posA = shellGeo.attributes.position;
+    for (let i = 0; i < posA.count; i++) {
+      const z = posA.getZ(i);
+      if (z < 0.2) {
+        const t = Math.min(1, (0.2 - z) / 1.8);
+        posA.setX(i, posA.getX(i) * (1 - t * 0.22));
+        if (posA.getY(i) > 0) posA.setY(i, posA.getY(i) * (1 - t * 0.07));
+      }
+    }
+    shellGeo.computeVertexNormals();
+    const shell = new THREE.Mesh(shellGeo, beige);
+    shell.castShadow = true; crt.add(shell);
+    // 屏幕 bezel：正面面板（板厚 0.1，贴前表面）
+    const facePlate = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.0, 0.1), M(0xcbbd9c, 0.6));
+    facePlate.position.set(0, 0.34, 0.79); facePlate.castShadow = true; crt.add(facePlate);
     // 屏下条带：铭牌居中 + 电源 LED 右侧（真实 Mac 的布局）
     const logo = makeCanvasTexture(512, 48, (ctx, c) => {
       ctx.fillStyle = '#cbbd9c'; ctx.fillRect(0, 0, c.width, c.height);
@@ -443,19 +456,19 @@ class HeroScene {
     repaintFns.push(() => logo.repaint());
     const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.062),
       new THREE.MeshBasicMaterial({ map: logo.tex }));
-    logoMesh.position.set(0, -0.82, 1.17); crt.add(logoMesh);
+    logoMesh.position.set(0, -0.80, 0.85); crt.add(logoMesh);
     this.led = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0x6cff9a }));
-    this.led.position.set(0.95, -0.82, 1.17); crt.add(this.led);
+    this.led.position.set(0.95, -0.80, 0.85); crt.add(this.led);
     // 软盘插槽：细长横缝（真实 Mac 的标志细节）
     const slot = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.045, 0.06), M(0x35301f, 0.5));
-    slot.position.set(0.0, -1.04, 1.17); crt.add(slot);
+    slot.position.set(0.0, -1.02, 0.85); crt.add(slot);
     const slotLip = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.02, 0.02), M(0xa5956f, 0.6));
-    slotLip.position.set(0.0, -1.01, 1.19); crt.add(slotLip);
+    slotLip.position.set(0.0, -0.99, 0.87); crt.add(slotLip);
     // 侧百叶通风（每侧三组浅刻线）
     for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
       const vent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.07, 1.5), M(0x8f7f5c, 0.7));
-      vent.position.set(side * 1.36, 0.85 - i * 0.16, -0.1);
+      vent.position.set(side * 1.40, 0.80 - i * 0.16, -0.15);
       crt.add(vent);
     }
 
@@ -506,64 +519,65 @@ class HeroScene {
       }`, {
       uBoot: { value: boot.tex }, uNext: { value: null }, uAscii: { value: asciiAtlas.tex },
       uMix: { value: 0 }, uPower: { value: 0 }, }, { __tag: "screenMat" });
-    this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 1.4), this.screenMat);
-    this.screen.position.set(0, 0.32, 1.22); crt.add(this.screen);
+    this.screen = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 1.47), this.screenMat);
+    this.screen.position.set(0, 0.34, 0.88); crt.add(this.screen);
 
     // 底部前脚（真实 Mac 的后仰站姿）
     const footWedge = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.16, 0.9), M(0xa89878, 0.55));
     footWedge.position.set(0, -1.36, 0.35); footWedge.castShadow = true; crt.add(footWedge);
 
-    crt.position.set(0, 1.5, -0.35);
+    crt.position.set(0, 1.46, -0.35);
     this.scene.add(crt);
 
-    // ---------- 键盘（拟真版）：阶梯宽窄布局 + 双色键帽 + 微倾角 + 指示灯 + 连接线 ----------
+    // ---------- 键盘（M0110 式）：无功能行 + 右侧双高键数字区（对照真实 1984 键盘） ----------
     const kbd = new THREE.Group();
-    const kbdBase = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.07, 0.72), M(0xc4b48f, 0.55));
+    const kbdBase = new THREE.Mesh(new THREE.BoxGeometry(2.28, 0.07, 0.74), M(0xc4b48f, 0.55));
     kbdBase.position.y = 0.035; kbdBase.castShadow = true; kbd.add(kbdBase);
-    const riser = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.075, 0.2), M(0xb7a67f, 0.6));
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(2.28, 0.075, 0.2), M(0xb7a67f, 0.6));
     riser.position.set(0, 0.07, -0.26); riser.castShadow = true; kbd.add(riser);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.02, 0.66), M(0x5a5040, 0.7));
-    plate.position.y = 0.075; kbd.add(plate); // 深色底板，露出键缝
-    // 真实键盘布局：每行键宽（单位=键距），首尾/功能行为修饰键配色
-    const U = 0.125;
-    const ROWS = [
-      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-      [1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5],
-      [1.7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.3],
-      [2.1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.9],
-      [1.3, 1.2, 1.2, 1.2, 4.4, 1.2, 1.2, 1.3],
-    ];
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.02, 0.66), M(0x5a5040, 0.7));
+    plate.position.y = 0.075; kbd.add(plate);
+    const U = 0.125, KH = 0.038, PLATE_Y = 0.085;
     const keyList = [];
-    ROWS.forEach((row, r) => {
-      let x = -row.reduce((a, b) => a + b, 0) / 2;
-      row.forEach((w, c) => {
-        keyList.push({
-          x: x + w / 2, z: -0.24 + r * 0.115, w: w * U - 0.012,
-          mod: r === 0 || r === 4 || c === 0 || c === row.length - 1,
-          jit: Math.sin(r * 31.7 + c * 17.3), // 稳定伪随机：键帽微倾/微色差
-        });
+    const pushKey = (xu, zu, wu, hu, dark) => keyList.push({
+      xu, zu, w: wu * U - 0.012, h: hu * U - 0.012, dark,
+      jit: Math.sin(xu * 91.7 + zu * 37.3),
+    });
+    const zU = (r) => -2.1 + r * 1.05; // 行中心（单位坐标）
+    const MAIN = 13;                    // 主区 13u 宽
+    // 主区四行（esc/tab/caps/shift 起，行末功能键收尾）
+    [
+      [1.4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.6],
+      [1.6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.4],
+      [1.8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.2],
+      [2.3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.7],
+    ].forEach((widths, r) => {
+      let x = -MAIN / 2;
+      widths.forEach((w, c) => {
+        pushKey(x + w / 2, zU(r + 1), w, 1, r === 0 || c === 0 || c === widths.length - 1);
         x += w;
       });
     });
-    const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.038, 0.1),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.62, metalness: 0.03 }), keyList.length);
+    // 底行：修饰键 + 长空格 + 方向键区
+    { let x = -MAIN / 2; [1.3, 1.4, 5.2, 1.3, 1.0, 1.4, 1.4].forEach((w, i) => { pushKey(x + w / 2, zU(5), w, 1, i !== 2); x += w; }); }
+    // 数字区（M0110 签名）：顶部一排小键 + 4 列 × 2 个双高键
+    const NPX = MAIN / 2 + 0.6;
+    { let x = NPX; [1, 1, 1, 1].forEach((w) => { pushKey(x + w / 2, zU(1), w, 1, true); x += w; }); }
+    for (let col = 0; col < 4; col++) for (let row = 0; row < 2; row++)
+      pushKey(NPX + col + 0.5, zU(2) + 0.525 + row * 2.1, 1, 2, true);
+    const keys = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 0.105),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.03 }), keyList.length);
     const dummy = new THREE.Object3D(), keyCol = new THREE.Color();
     keyList.forEach((k, i) => {
-      dummy.position.set(k.x, 0.104, k.z);
-      dummy.scale.set(k.w, 1, 1);
-      dummy.rotation.set(0.03 + Math.abs(k.jit) * 0.012, k.jit * 0.014, 0);
+      dummy.position.set(k.xu * U - 0.29, PLATE_Y + (k.h / 2) + 0.02, k.zu * U);
+      dummy.scale.set(k.w, k.h, 1);
+      dummy.rotation.set(0.03 + Math.abs(k.jit) * 0.01, k.jit * 0.012, 0);
       dummy.updateMatrix(); keys.setMatrixAt(i, dummy.matrix);
-      keys.setColorAt(i, keyCol.setHex(k.mod ? 0x8f7f60 : 0xd9cdaa).offsetHSL(0, 0, k.jit * 0.008));
+      keys.setColorAt(i, keyCol.setHex(k.dark ? 0x9d8c68 : 0xdccfa9).offsetHSL(0, 0, k.jit * 0.008));
     });
     keys.instanceColor.needsUpdate = true;
     keys.castShadow = true; kbd.add(keys);
-    // 指示灯 ×3（右上：绿/琥珀/红）
-    [[-0.02, 0x6cff9a], [-0.07, 0xffb000], [-0.12, 0xff5a4a]].forEach(([dx, hex]) => {
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.012, 0.016),
-        new THREE.MeshBasicMaterial({ color: hex }));
-      lamp.position.set(0.82 + dx, 0.118, -0.3); kbd.add(lamp);
-    });
-    kbd.position.set(0.15, 0.02, 1.75); kbd.rotation.x = -0.085;
+    kbd.position.set(0.0, 0.02, 1.72); kbd.rotation.x = -0.085;
     this.scene.add(kbd);
     // 连接线：键盘后沿 → 桌面绕行 → 显示器右下
     const cable = new THREE.Mesh(
@@ -637,7 +651,7 @@ class HeroScene {
     const normal = new THREE.Vector3(0, 0, 1)
       .applyQuaternion(this.screen.getWorldQuaternion(new THREE.Quaternion())).normalize();
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
-    const h = 1.4, w = 1.85; // 屏幕平面的世界尺寸
+    const h = 1.47, w = 1.95; // 屏幕平面的世界尺寸
     const dist = Math.max(
       (h / 2) / Math.tan(fov / 2),
       (w / 2) / (Math.tan(fov / 2) * this.camera.aspect),
