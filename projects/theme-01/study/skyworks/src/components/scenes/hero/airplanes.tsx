@@ -1,8 +1,7 @@
-import { Environment, useGLTF } from "@react-three/drei";
+import { Environment } from "@react-three/drei";
 import { type RefObject, useImperativeHandle, useMemo, useRef } from "react";
-import { type BufferGeometry, type InstancedMesh, type Material, Matrix4, Mesh, Object3D, Vector3 } from "three";
-import { Fn, normalWorld, vec3 } from "three/tsl";
-import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from "three/webgpu";
+import { type BufferGeometry, type InstancedMesh, Matrix4, Object3D, Vector3 } from "three";
+import { BoxGeometry, MeshLambertMaterial } from "three/webgpu";
 
 export type AirplanesUpdateHandle = (args: { progress: number }) => void;
 
@@ -14,52 +13,49 @@ const PLANE_PATH_ANGLE_VARIANCE = Math.PI * 0.5;
 const PLANE_PATH_X_SPREAD = 18;
 const PLANE_SURFACE_OFFSET = 2.5;
 
-type PlaneMesh = {
+/* 像素鸽：方块拼装（forward=+z），双翼绕 z 轴扇动——替换原 airplane.glb，航线系统照旧 */
+type DovePart = {
   geometry: BufferGeometry;
-  material: Material | Material[];
+  material: MeshLambertMaterial;
   sourceMatrix: Matrix4;
+  flapSign: number; // 0=固定件
 };
 
 export function Airplanes({ radius, updateHandle }: { radius: number; updateHandle: RefObject<AirplanesUpdateHandle | null> }) {
   const instanceMeshRefs = useRef<Array<InstancedMesh | null>>([]);
   const matrix = useMemo(() => new Matrix4(), []);
+  const flapMatrix = useMemo(() => new Matrix4(), []);
+  const localMatrix = useMemo(() => new Matrix4(), []);
   const direction = useMemo(() => new Vector3(), []);
   const target = useMemo(() => new Vector3(), []);
 
-  const { scene } = useGLTF("/airplane.glb");
-
-  const planeMaterial = useMemo(() => {
-    const mat = new MeshStandardNodeMaterial();
-    mat.toneMapped = false;
-    mat.transparent = true;
-    mat.roughness = 0.1;
-    mat.metalness = 1;
-    mat.colorNode = vec3(0.2);
+  const doveMaterial = useMemo(() => {
+    const mat = new MeshLambertMaterial();
+    mat.color.set("#efe8d8"); // 米白鸽
     return mat;
   }, []);
 
-  const planeMeshes = useRef(
-    (() => {
-      const meshes: Array<PlaneMesh> = [];
-
-      scene.updateMatrixWorld(true);
-      scene.traverse((object) => {
-        if (object instanceof Mesh) {
-          meshes.push({
-            geometry: object.geometry,
-            material: planeMaterial,
-            sourceMatrix: object.matrixWorld.clone(),
-          });
-        }
-      });
-
-      return meshes;
-    })(),
-  );
+  const doveParts = useMemo<DovePart[]>(() => {
+    const part = (w: number, h: number, d: number, x: number, y: number, z: number, flap = 0): DovePart => {
+      const geometry = new BoxGeometry(w, h, d);
+      const m = new Object3D();
+      m.position.set(x, y, z);
+      m.updateMatrix();
+      return { geometry, material: doveMaterial, sourceMatrix: m.matrix.clone(), flapSign: flap };
+    };
+    return [
+      part(1.0, 0.9, 2.3, 0, 0, 0),               // 身体
+      part(0.8, 0.8, 0.8, 0, 0.25, 1.4),          // 头
+      part(0.25, 0.25, 0.5, 0, 0.2, 2.0),         // 喙
+      part(0.7, 0.55, 1.0, 0, 0.1, -1.6),         // 尾
+      part(1.1, 0.14, 2.4, 1.3, 0.45, -0.1, 1),   // 左翼
+      part(1.1, 0.14, 2.4, -1.3, 0.45, -0.1, -1), // 右翼
+    ];
+  }, [doveMaterial]);
 
   const planes = useMemo(() => {
     return Array.from({ length: PLANE_COUNT }, (_, i) => {
-      const direction = 1; // i % 2 === 0 ? 1 : -1;
+      const direction = 1;
       const directionIndex = Math.floor(i / 2);
       const directionCount = Math.ceil(PLANE_COUNT / 2);
       const lane = directionIndex / directionCount;
@@ -83,7 +79,8 @@ export function Airplanes({ radius, updateHandle }: { radius: number; updateHand
   const planeRefs = useRef(planes);
 
   useImperativeHandle(updateHandle, () => ({ progress }) => {
-    planeRefs.current.forEach((plane) => {
+    const t = performance.now() / 1000;
+    planeRefs.current.forEach((plane, planeIndex) => {
       const travel = (progress * PLANE_PROGRESS_SPEED * plane.userData.speed + plane.userData.offset) % 1;
 
       const centeredTravel = travel - 0.5;
@@ -99,31 +96,36 @@ export function Airplanes({ radius, updateHandle }: { radius: number; updateHand
       target.copy(plane.position).add(direction);
       plane.up.set(0, Math.sin(angle), Math.cos(angle));
       plane.lookAt(target);
-      plane.rotateX(-Math.PI);
-      plane.rotateY(Math.PI / 2 - 0.1);
-      plane.rotateZ(Math.PI);
-    });
+      plane.updateMatrix();
 
-    planeMeshes.current.forEach(({ sourceMatrix }, meshIndex) => {
-      const mesh = instanceMeshRefs.current[meshIndex];
+      const flap = Math.sin(t * 9 + planeIndex * 1.7) * 0.75; // 扇翅
+      doveParts.forEach(({ sourceMatrix, flapSign }, meshIndex) => {
+        const mesh = instanceMeshRefs.current[meshIndex];
 
-      if (!mesh) {
-        return;
-      }
+        if (!mesh) {
+          return;
+        }
 
-      planeRefs.current.forEach((plane, planeIndex) => {
-        plane.updateMatrix();
-        matrix.multiplyMatrices(plane.matrix, sourceMatrix);
+        if (flapSign !== 0) {
+          flapMatrix.makeRotationZ(flap * flapSign);
+          localMatrix.multiplyMatrices(sourceMatrix, flapMatrix);
+          matrix.multiplyMatrices(plane.matrix, localMatrix);
+        } else {
+          matrix.multiplyMatrices(plane.matrix, sourceMatrix);
+        }
         mesh.setMatrixAt(planeIndex, matrix);
       });
+    });
 
-      mesh.instanceMatrix.needsUpdate = true;
+    doveParts.forEach((_, meshIndex) => {
+      const mesh = instanceMeshRefs.current[meshIndex];
+      if (mesh) mesh.instanceMatrix.needsUpdate = true;
     });
   });
 
   return (
     <group>
-      {planeMeshes.current.map(({ geometry, material }, i) => (
+      {doveParts.map(({ geometry, material }, i) => (
         <instancedMesh
           key={i}
           ref={(mesh) => {

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect } from "react";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Renderer } from "@/components/renderer";
@@ -56,9 +55,6 @@ export function DemoApp() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 z-1000 p-6">
-        <Image src="/logo.svg" alt="logo" width={250} height={100} className="w-[150px] lg:w-[250px]" />
-      </header>
       <ScrollContainer>
         <Renderer />
       </ScrollContainer>

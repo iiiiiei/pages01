@@ -1,8 +1,9 @@
-import { useFBO, useGLTF } from "@react-three/drei";
+import { useFBO } from "@react-three/drei";
 import { createPortal } from "@react-three/fiber";
 import { useSpring } from "motion/react";
 import { type RefObject, useImperativeHandle, useMemo, useRef } from "react";
-import { Color, Mesh, MeshLambertMaterial, type Texture } from "three";
+import { Color, Group, Mesh, MeshLambertMaterial, type Texture } from "three";
+import { BoxGeometry } from "three/webgpu";
 import { abs, cos, Fn, length, mix, pow, sin, smoothstep, uniform, uv, vec2, vec3 } from "three/tsl";
 import { MeshBasicNodeMaterial } from "three/webgpu";
 import { useCreateSceneAndCamera } from "@/components/utils/use-create-scene-and-camera";
@@ -72,18 +73,32 @@ export function Logo({ renderHandle }: { renderHandle: RefObject<LogoRenderHandl
     return mat;
   }, []);
 
-  const logo = useGLTF("/logo.glb");
+  /* 像素字标：方块拼装 IIIIIEI（替换 skyworks GLB，风格保持像素） */
   const logoScene = useMemo(() => {
-    const clonedScene = logo.scene.clone(true);
-
-    clonedScene.traverse((object) => {
-      if (object instanceof Mesh) {
-        object.material = logoMaterial;
+    const group = new Group();
+    const u = 0.5;
+    const word = "IIIIIEI";
+    const step = 1.8 * u;
+    let x = -((word.length - 1) * step) / 2;
+    for (const ch of word) {
+      if (ch === "I") {
+        const bar = new Mesh(new BoxGeometry(u, 3 * u, u), logoMaterial);
+        bar.position.set(x, 0, 0);
+        group.add(bar);
+      } else {
+        const stem = new Mesh(new BoxGeometry(u, 3 * u, u), logoMaterial);
+        stem.position.set(x, 0, 0);
+        group.add(stem);
+        for (const yy of [u, 0, -u]) {
+          const arm = new Mesh(new BoxGeometry(2 * u, u, u), logoMaterial);
+          arm.position.set(x + u, yy, 0);
+          group.add(arm);
+        }
       }
-    });
-
-    return clonedScene;
-  }, [logo.scene, logoMaterial]);
+      x += step;
+    }
+    return group;
+  }, [logoMaterial]);
 
   const fbo = useFBO();
   useImperativeHandle(renderHandle, () => ({ state }) => {
@@ -114,7 +129,7 @@ export function Logo({ renderHandle }: { renderHandle: RefObject<LogoRenderHandl
         <planeGeometry args={[planeWidth * 2, planeHeight * 2]} />
       </mesh>
       <group position={[0, 0.5, -5]}>
-        <primitive object={logoScene} scale={0.09} rotation={[0, -0.8, 0]} />
+        <primitive object={logoScene} scale={0.55} rotation={[0, -0.8, 0]} />
       </group>
       <ambientLight intensity={0.5} />
       <directionalLight intensity={3} position={[0, 0, 10]} />
