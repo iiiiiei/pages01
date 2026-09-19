@@ -16,13 +16,13 @@ const robotoFont = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "Skyworks",
-  description: "Atmospheric possibility, rendered in motion.",
+  title: "IIIIIEI — 创意开发工作室",
+  description: "我坚信生活是艺术的低语。专注 WebGL 与生成式视觉。",
 };
 
 export default function RootLayout(_: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${storyScriptFont.variable} ${robotoFont.variable} h-full antialiased`}>
+    <html lang="zh-CN" className={`${storyScriptFont.variable} ${robotoFont.variable} h-full antialiased`}>
       <body className="bg-black overflow-hidden overscroll-none select-none font-roboto">
         <header className="fixed z-1000 top-0 left-0 p-6">
           <Image src="/logo.svg" alt="logo" width={250} height={100} className="w-[150px] lg:w-[250px]" />
