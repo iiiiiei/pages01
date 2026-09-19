@@ -212,9 +212,9 @@ addEventListener('scroll', () => { // 原生滚动（滚动条/触屏）同步�
   }
 }, { passive: true });
 addEventListener('wheel', (e) => {
-  if (e.ctrlKey) return; // 缩放手势直通
+  if (e.ctrlKey) return;
   e.preventDefault();
-  scroller.wheel(clamp(e.deltaY, -900, 900)); // 单次增益封顶
+  scroller.wheel(clamp(e.deltaY, -900, 900));
 }, { passive: false });
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1164,7 +1164,8 @@ function resize() {
   pyr.d2.setSize(...half2(8));
   mwRT[0].setSize(...half2(2)); mwRT[1].setSize(...half2(2));       // 鼠标权重乒乓
 }
-addEventListener('resize', resize);
+addEventListener('resize', () => { scroller.measure(); resize(); });
+scroller.measure(); // 布局就绪后测量滚动范围（缺失则 limit=1，滚轮被钳死——滚动失效根因）
 resize();
 
 // UI 状态
@@ -1196,7 +1197,9 @@ function frame() {
     const i = renderer.info.render;
     showErr(`[diag] draws=${i.calls} tris=${i.triangles} p=${progress.toFixed(2)}`);
   }
-  const t = clock.getElapsedTime();
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  scroller.tick(dt); // 驱动平滑滚动（缺失则 target 永不推进——滚动失效根因）
   const state = { progress, time: t };
   mouse.sx = lerp(mouse.sx, mouse.x, 0.06);
   mouse.sy = lerp(mouse.sy, mouse.y, 0.06);
