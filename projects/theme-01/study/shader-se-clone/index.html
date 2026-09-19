@@ -382,134 +382,113 @@ const boot = makeCanvasTexture(768, 576, (ctx, c, blink = true) => {
 if (!REDUCED) setInterval(() => boot.repaint(Math.floor(Date.now() / 500) % 2 === 0), 500);
 repaintFns.push(() => boot.repaint(true));
 
-/* 屏内精排页：shader.se 式编辑部排版——纸页、衬线大标题、细线、矢量图解、页码 */
+/* 屏内叙事页：参考站实测结构——深蓝紫夜空 + 居中衬线大字 + 3D 物件时刻，无卡片 */
 const SERIF = 'Georgia, "Times New Roman", "Songti SC", serif';
 const MONO = '"IBM Plex Mono", "Songti SC", monospace';
-const wrapZh = (ctx, text, x, y, n, lh) => {
-  for (let i = 0; i * n < text.length; i++) ctx.fillText(text.slice(i * n, i * n + n), x, y + i * lh);
-};
-const STUDIES = [
-  ['选择性渲染', 'SELECTIVE RENDERING', '相机背后的世界不必存在。视野之外的物体在提交前就被剔除，一帧只画你看见的部分。'],
-  ['FBO 倒序链', 'REVERSE FBO CHAIN', '尽头先画，屏内次之，桌面最后。每个场景渲染进纹理，再作为下一场景的背景逐级下传。'],
-  ['视锥匹配', 'FIT THE FRUSTUM', '相机被推到恰好让虚拟屏幕铺满画面之处，穿屏的一瞬没有缝隙，也没有跳变。'],
-  ['屏幕空间过渡', 'SCREEN-SPACE BLEND', '过渡不依赖模型，而按片元坐标采样下一场景——噪声阈值推进，像素逐粒点亮新世界。'],
-  ['渲染偏移', 'RENDER AHEAD', '你到达之前，下一帧已经备好。滚动读取的是提前量，画面因此永远先你半步。'],
-  ['一根滚动条', 'ONE SCROLLBAR', '没有动画库。滚动位置是唯一的时间轴，所有 uniform 由它驱动，滚动条即导演。'],
-];
-/* 每页一幅矢量图解（钢笔线稿，刊物插图风） */
-const DIAGRAMS = [
-  (ctx, x, y, w, h) => { // 视锥
-    ctx.beginPath(); ctx.arc(x + w * 0.12, y + h / 2, 5, 0, 7); ctx.fill();
-    ctx.strokeRect(x + w * 0.62, y + h * 0.14, w * 0.3, h * 0.72);
-    ctx.beginPath();
-    ctx.moveTo(x + w * 0.15, y + h / 2); ctx.lineTo(x + w * 0.62, y + h * 0.14);
-    ctx.moveTo(x + w * 0.15, y + h / 2); ctx.lineTo(x + w * 0.62, y + h * 0.86);
-    ctx.stroke();
-  },
-  (ctx, x, y, w, h) => { // 倒序链 A←B←C
-    const bw = w * 0.17, bh = h * 0.5, gap = w * 0.155;
-    ['A', 'B', 'C'].forEach((ch, i) => {
-      const bx = x + w * 0.1 + i * (bw + gap);
-      ctx.strokeRect(bx, y + h * 0.25, bw, bh);
-      ctx.font = '600 ' + Math.round(h * 0.3) + 'px ' + MONO; ctx.textAlign = 'center';
-      ctx.fillText(ch, bx + bw / 2, y + h * 0.25 + bh * 0.66); ctx.textAlign = 'left';
-      if (i < 2) { const ax = bx + bw + 4;
-        ctx.beginPath(); ctx.moveTo(ax + gap - 12, y + h / 2); ctx.lineTo(ax, y + h / 2);
-        ctx.moveTo(ax + 9, y + h / 2 - 6); ctx.lineTo(ax, y + h / 2); ctx.lineTo(ax + 9, y + h / 2 + 6);
-        ctx.stroke(); }
-    });
-  },
-  (ctx, x, y, w, h) => { // 视锥贴合屏幕
-    ctx.strokeRect(x + w * 0.55, y + h * 0.16, w * 0.34, h * 0.68);
-    ctx.beginPath();
-    ctx.moveTo(x + w * 0.1, y + h / 2); ctx.lineTo(x + w * 0.55, y + h * 0.16);
-    ctx.lineTo(x + w * 0.55, y + h * 0.84); ctx.closePath(); ctx.stroke();
-  },
-  (ctx, x, y, w, h) => { // 像素网格逐粒点亮
-    const cols = 12, rows = 5, cw = w * 0.7 / cols, ch2 = h * 0.62 / rows;
-    const ox = x + w * 0.15, oy = y + h * 0.19;
-    for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++) {
-      const lit = (q * 7 + r * 13) % 5 < 2;
-      ctx.fillStyle = lit ? '#23201a' : 'rgba(35,32,26,.18)';
-      ctx.fillRect(ox + q * cw + 1, oy + r * ch2 + 1, cw - 2.5, ch2 - 2.5);
-    }
-  },
-  (ctx, x, y, w, h) => { // 时间轴提前量
-    ctx.beginPath(); ctx.moveTo(x + w * 0.08, y + h * 0.62); ctx.lineTo(x + w * 0.92, y + h * 0.62); ctx.stroke();
-    ctx.fillStyle = '#23201a'; ctx.fillRect(x + w * 0.08, y + h * 0.24, w * 0.5, h * 0.14);
-    ctx.fillStyle = 'rgba(35,32,26,.4)'; ctx.fillRect(x + w * 0.3, y + h * 0.44, w * 0.5, h * 0.1);
-    ctx.fillStyle = '#23201a'; ctx.font = Math.round(h * 0.2) + 'px ' + MONO; ctx.textAlign = 'right';
-    ctx.fillText('提前', x + w * 0.3, y + h * 0.92); ctx.textAlign = 'left';
-  },
-  (ctx, x, y, w, h) => { // 一根滚动条
-    ctx.strokeRect(x + w * 0.08, y + h * 0.34, w * 0.84, h * 0.3);
-    ctx.fillStyle = '#23201a'; ctx.fillRect(x + w * 0.08, y + h * 0.34, w * 0.84, h * 0.09);
-    ctx.fillStyle = 'rgba(35,32,26,.3)';
-    for (let q = 0; q < 5; q++) ctx.fillRect(x + w * (0.2 + q * 0.15), y + h * 0.72, 2, h * 0.12);
-  },
-];
-const cardTextures = STUDIES.map(([title, en, body], i) => makeCanvasTexture(640, 800, (ctx, c) => {
-  const W = c.width, H = c.height;
-  ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, W, H);
-  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.62);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(70,58,34,.16)');
-  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-  let seed = i * 97 + 13; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let k = 0; k < 220; k++) { ctx.fillStyle = 'rgba(115,104,82,' + (rnd() * 0.08).toFixed(3) + ')'; ctx.fillRect(rnd() * W, rnd() * H, 1.6, 1.6); }
-  const INK = '#23201a';
-  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2;
-  try { ctx.letterSpacing = '3px'; } catch (e) {}
-  ctx.font = '600 19px ' + MONO; ctx.fillStyle = '#6b6552';
-  ctx.fillText('IIIIIEI · 管线研究 — STUDY 0' + (i + 1), 56, 82);
+const CREAM = '#efe8d8';
+const suspenseTex = makeCanvasTexture(1440, 900, (ctx, c) => {
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM;
+  ctx.shadowColor = 'rgba(239,232,216,.45)'; ctx.shadowBlur = 34;
+  ctx.font = '700 108px ' + SERIF;
+  ['还不相信', '这台机器', '是认真的吗？'].forEach((l, i) => ctx.fillText(l, c.width / 2, 300 + i * 150));
+  ctx.shadowBlur = 0;
+  ctx.font = 'italic 400 40px ' + SERIF; ctx.fillStyle = 'rgba(239,232,216,.72)';
+  ctx.fillText('袖中还有最后一招。', c.width / 2, 800);
+  ctx.textAlign = 'left';
+});
+repaintFns.push(() => suspenseTex.repaint());
+const goldHead = makeCanvasTexture(1920, 360, (ctx, c) => {
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center';
+  const g = ctx.createLinearGradient(0, 60, 0, 300);
+  g.addColorStop(0, '#f6e3a8'); g.addColorStop(0.5, '#cfa64b'); g.addColorStop(1, '#8f6f2a');
+  ctx.fillStyle = g; ctx.shadowColor = 'rgba(207,166,75,.5)'; ctx.shadowBlur = 40;
+  ctx.font = '700 250px ' + SERIF;
+  ctx.fillText('……黄金软盘……', c.width / 2, 295);
+  ctx.textAlign = 'left';
+});
+repaintFns.push(() => goldHead.repaint());
+const goldSub = makeCanvasTexture(1280, 240, (ctx, c) => {
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM;
+  ctx.font = 'italic 400 58px ' + SERIF;
+  ctx.fillText('你滚到了这里，值得一枚决胜盘。', c.width / 2, 118);
+  ctx.font = '500 26px ' + MONO; ctx.fillStyle = 'rgba(239,232,216,.55)';
+  try { ctx.letterSpacing = '6px'; } catch (e) {}
+  ctx.fillText('YOU MADE IT THIS FAR — A TIE-BREAK', c.width / 2, 186);
   try { ctx.letterSpacing = '0px'; } catch (e) {}
-  ctx.beginPath(); ctx.moveTo(56, 104); ctx.lineTo(W - 56, 104); ctx.stroke();
-  ctx.fillStyle = 'rgba(35,32,26,.08)'; ctx.font = '700 200px ' + SERIF; ctx.textAlign = 'right';
-  ctx.fillText('0' + (i + 1), W - 40, 250); ctx.textAlign = 'left';
-  ctx.fillStyle = INK; ctx.font = '700 64px ' + SERIF;
-  ctx.fillText(title, 54, 218);
-  ctx.font = '500 20px ' + MONO; ctx.fillStyle = '#8a8370';
-  try { ctx.letterSpacing = '4px'; } catch (e) {}
-  ctx.fillText(en, 56, 262);
-  try { ctx.letterSpacing = '0px'; } catch (e) {}
-  ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.moveTo(56, 296); ctx.lineTo(W - 56, 296); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(56, 302); ctx.lineTo(W - 56, 302); ctx.stroke();
-  ctx.fillStyle = '#3a362c'; ctx.font = '400 25px ' + SERIF;
-  wrapZh(ctx, body, 56, 366, 19, 40);
-  ctx.strokeStyle = 'rgba(35,32,26,.5)'; ctx.lineWidth = 1;
-  ctx.strokeRect(56, 560, W - 112, 170);
-  ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = 2;
-  DIAGRAMS[i](ctx, 56, 560, W - 112, 170);
-  ctx.beginPath(); ctx.moveTo(56, 736); ctx.lineTo(W - 56, 736); ctx.stroke();
-  ctx.font = '500 19px ' + MONO; ctx.fillStyle = '#6b6552';
-  ctx.fillText('iiiiiei.com', 56, 772);
-  ctx.textAlign = 'right'; ctx.fillText('0' + (i + 1) + ' / 06', W - 56, 772); ctx.textAlign = 'left';
-}));
-cardTextures.forEach((t) => repaintFns.push(() => t.repaint()));
+  ctx.textAlign = 'left';
+});
+repaintFns.push(() => goldSub.repaint());
+const goldLabel = makeCanvasTexture(512, 200, (ctx, c) => {
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#efe8d8'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#23201a'; ctx.font = '700 64px ' + SERIF;
+  ctx.fillText('决胜盘', 40, 86);
+  ctx.strokeStyle = '#23201a'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(40, 120); ctx.lineTo(c.width - 40, 120); ctx.stroke();
+  ctx.font = '500 34px ' + MONO;
+  ctx.fillText('IIIIIEI · 1D', 40, 168);
+});
 
-/* 终章版权页：与屏内纸页同一套编辑部语言 */
-const endTitle = makeCanvasTexture(1024, 512, (ctx, c) => {
-  const W = c.width, H = c.height, INK = '#23201a';
-  ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, W, H);
-  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.24, W / 2, H / 2, H * 0.72);
-  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(70,58,34,.15)');
+/* 终章联系页：参考站 #contact 实测结构——巨型裁切标题 + 居中三行 + 三栏 + 虚线卡片 */
+const endTitle = makeCanvasTexture(1600, 1000, (ctx, c) => {
+  const W = c.width, H = c.height, INK = '#efe8d8';
+  ctx.fillStyle = '#0a0908'; ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.2, W / 2, H * 0.42, H * 0.75);
+  vg.addColorStop(0, 'rgba(56,48,80,.18)'); vg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
-  let seed = 20260919; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let k = 0; k < 160; k++) { ctx.fillStyle = 'rgba(115,104,82,' + (rnd() * 0.08).toFixed(3) + ')'; ctx.fillRect(rnd() * W, rnd() * H, 1.6, 1.6); }
-  ctx.textAlign = 'center'; ctx.fillStyle = INK;
-  ctx.font = '700 104px ' + SERIF;
-  ctx.fillText('传输结束。', W / 2, 178);
-  ctx.lineWidth = 1.6; ctx.strokeStyle = INK;
-  ctx.beginPath(); ctx.moveTo(W / 2 - 210, 224); ctx.lineTo(W / 2 + 210, 224); ctx.stroke();
-  ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(W / 2 - 210, 230); ctx.lineTo(W / 2 + 210, 230); ctx.stroke();
-  ctx.font = '400 36px ' + SERIF;
-  ctx.fillText('这条管线现在属于 iiiiiei.com', W / 2, 300);
-  ctx.font = '500 23px ' + MONO; ctx.fillStyle = '#6b6552';
-  try { ctx.letterSpacing = '3px'; } catch (e) {}
-  ctx.fillText('GITHUB · GITHUB.COM/IIIIIEI', W / 2, 372);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK; ctx.shadowColor = 'rgba(239,232,216,.4)'; ctx.shadowBlur = 44;
+  ctx.font = '700 300px ' + SERIF;
+  ctx.fillText('后会有期。', W / 2, 205);          // 巨型标题：上缘出画（裁切感）
+  ctx.shadowBlur = 0;
+  ctx.save(); ctx.translate(1330, 150); ctx.rotate(-0.35);  // 标题右上的电话听筒线稿
+  ctx.strokeStyle = INK; ctx.lineWidth = 10; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, 0, 46, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-42, 16); ctx.lineTo(-58, 44); ctx.moveTo(42, 16); ctx.lineTo(58, 44); ctx.stroke();
+  ctx.restore();
+  ctx.font = '400 46px ' + SERIF; ctx.fillStyle = INK;
+  ['关于数字项目、合作、或者只是好奇，', '都欢迎来说两句。', '今天就来接口！'].forEach((l, i) => ctx.fillText(l, W / 2, 360 + i * 66));
+  const cols = [
+    ['一般咨询', ['github.com/iiiiiei', '开一个 Issue', '留言板随时开放']],
+    ['到访', ['互联网 · 任意终端', '不设办公室', '随时在线']],
+    ['社交', ['GitHub', 'Bilibili', 'X']],
+  ];
+  cols.forEach(([h, lines], i) => {
+    const x = 320 + i * 480;
+    ctx.font = '700 36px ' + SERIF; ctx.fillStyle = INK;
+    ctx.fillText(h, x, 640);
+    ctx.font = '400 30px ' + SERIF;
+    lines.forEach((l, j) => {
+      ctx.fillText(l, x, 700 + j * 48);
+      const tw = ctx.measureText(l).width;         // 链接式细下划线
+      ctx.fillRect(x - tw / 2, 710 + j * 48, tw, 2);
+    });
+  });
+  ctx.fillStyle = 'rgba(239,232,216,.22)';
+  ctx.fillRect(560, 615, 2, 170); ctx.fillRect(1040, 615, 2, 170);
+  ctx.setLineDash([12, 9]); ctx.strokeStyle = 'rgba(239,232,216,.45)'; ctx.lineWidth = 3;
+  ctx.strokeRect(120, 815, 1360, 150); ctx.setLineDash([]);
+  ctx.save(); ctx.translate(215, 905); ctx.fillStyle = INK;   // 卓别林剪影：礼帽+头+肩+拐杖
+  ctx.beginPath(); ctx.arc(0, -52, 34, 0, 7); ctx.fill();
+  ctx.fillRect(-40, -96, 80, 14);
+  ctx.fillRect(-24, -124, 48, 32);
+  ctx.beginPath(); ctx.arc(0, 30, 62, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle = INK; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(58, 40); ctx.lineTo(74, 108); ctx.stroke();
+  ctx.restore();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = INK; ctx.font = '700 40px ' + SERIF;
+  ctx.fillText('新业务', 340, 878);
+  ctx.font = '400 28px ' + SERIF; ctx.fillStyle = 'rgba(239,232,216,.85)';
+  ctx.fillText('想开始新项目？开一个 Issue 说明你的想法，', 340, 922);
+  ctx.fillText('iiiiiei 会亲自回复。', 340, 958);
+  ctx.textAlign = 'right'; ctx.font = '500 22px ' + MONO; ctx.fillStyle = 'rgba(239,232,216,.5)';
+  try { ctx.letterSpacing = '4px'; } catch (e) {}
+  ctx.fillText('EST. 2026 · IIIIIEI.COM', 1430, 940);
   try { ctx.letterSpacing = '0px'; } catch (e) {}
-  ctx.font = 'italic 400 27px ' + SERIF; ctx.fillStyle = '#8a8370';
-  ctx.fillText('谢谢你一路滚过这台机器。', W / 2, 442);
   ctx.textAlign = 'left';
 });
 repaintFns.push(() => endTitle.repaint());
@@ -865,120 +844,88 @@ class HeroScene {
 class InsideScene {
   constructor() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x010604);
-    this.scene.fog = new THREE.FogExp2(0x010604, 0.052);
+    this.scene.background = new THREE.Color(0x070712);
+    this.scene.fog = new THREE.FogExp2(0x070712, 0.045);
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 80);
     this.activeRange = [0.36, 1.05];
     this.scene.add(this.camera); // 揭示层挂在相机上，屏幕空间采样
 
-    // 发光网格地面（消费鼠标权重贴图：拖尾推开网格 + 点亮，"鼠标即光"）
-    const grid = new THREE.Mesh(new THREE.PlaneGeometry(70, 220, 1, 1), mat(/* glsl */`
-      varying vec2 vUv; uniform float uTime; uniform vec2 uRes; uniform sampler2D uMouseW;
-      void main() {
-        vec3 mw = texture2D(uMouseW, gl_FragCoord.xy / uRes).rgb;
-        vec2 mdir = mw.rg * 2.0 - 1.0;
-        vec2 guv = vUv + mdir * mw.b * 0.010;            // 拖尾轻推网格坐标
-        vec2 g = abs(fract(vec2(guv.x * 35.0, guv.y * 110.0 + uTime * 2.0)) - 0.5);
-        float line = smoothstep(0.06, 0.0, min(g.x, g.y));
-        line = min(line + mw.b * 0.9, 1.0);              // 扫过之处网格点亮
-        float fade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.55, vUv.y);
-        vec3 col = mix(vec3(0.0, 0.35, 0.18), vec3(0.2, 1.0, 0.55), line);
-        gl_FragColor = vec4(col * line * 1.6 * fade + col * 0.04 + vec3(0.1, 0.5, 0.3) * mw.b * fade, 1.0);
-      }`, { uMouseW: { value: null }, __tag: "insideGrid" }));
-    grid.rotation.x = -Math.PI / 2; grid.position.y = -2.6; this.scene.add(grid);
-    this.gridMat = grid.material;
-
-    // ---------- 机架墙：两侧立柱框架（与卡片同节律，撑起隧道空间感） ----------
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x0d2418, roughness: 0.55, metalness: 0.35 });
-    const stripMat = new THREE.MeshBasicMaterial({ color: 0x1f8f55 });
-    const FRAMES = 9;
-    const racks = new THREE.InstancedMesh(new THREE.BoxGeometry(0.2, 6.4, 0.2), rackMat, FRAMES * 4);
-    const strips = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 5.2, 0.06), stripMat, FRAMES * 2);
-    const rd = new THREE.Object3D();
-    let ri = 0, si = 0;
-    for (let f = 0; f < FRAMES; f++) {
-      const z = -6 - f * 4.4;
-      for (const x of [-5.4, 5.4]) for (const dy of [-0.9, 0.9]) {
-        rd.position.set(x, dy, z); rd.updateMatrix(); racks.setMatrixAt(ri++, rd.matrix);
-      }
-      for (const x of [-5.05, 5.05]) {
-        rd.position.set(x, 0, z); rd.updateMatrix(); strips.setMatrixAt(si++, rd.matrix);
-      }
-    }
-    this.scene.add(racks, strips);
-
-    // ---------- 顶部线缆：三根沿隧道顶蜿蜒 ----------
-    const cableMat = new THREE.MeshStandardMaterial({ color: 0x103526, roughness: 0.5, metalness: 0.2 });
-    [[-1.6, 0.9], [0.2, 1.3], [1.7, 0.7]].forEach(([x, sag], i) => {
-      const pts = [];
-      for (let z = 8; z >= -34; z -= 4)
-        pts.push(new THREE.Vector3(x + Math.sin(z * 0.35 + i) * 0.35, 2.7 + Math.sin(z * 0.5 + i * 2) * sag * 0.5 - sag * 0.3, z));
-      this.scene.add(new THREE.Mesh(
-        new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.035, 6), cableMat));
-    });
-
-    // ---------- 尽头核心光：隧道终端的信号源 ----------
-    const coreTex = makeCanvasTexture(256, 256, (ctx, c) => {
-      const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 6, c.width / 2, c.height / 2, c.width / 2);
-      g.addColorStop(0, 'rgba(120,255,190,1)');
-      g.addColorStop(0.35, 'rgba(40,220,130,.35)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
+    // ---------- 夜空背景板：黑→靛蓝→蓝紫垂直渐变（参考站 45% 屏内实测底色） ----------
+    const nightTex = makeCanvasTexture(64, 1024, (ctx, c) => {
+      const g = ctx.createLinearGradient(0, 0, 0, c.height);
+      g.addColorStop(0, '#020207'); g.addColorStop(0.45, '#12102a');
+      g.addColorStop(0.8, '#241a45'); g.addColorStop(1, '#2b2050');
       ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
     });
-    this.core = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({
-      map: coreTex.tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
-    this.core.position.set(0, 0.4, -47);
-    this.scene.add(this.core);
-    const coreLight = new THREE.PointLight(0x39ff88, 40, 60, 1.6);
-    coreLight.position.set(0, 0.4, -42);
-    this.scene.add(coreLight);
+    const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(60, 40),
+      new THREE.MeshBasicMaterial({ map: nightTex.tex, fog: false }));
+    backdrop.position.set(0, 2, -36);
+    this.scene.add(backdrop);
 
-    // ---------- 浮游微粒：信号尘埃 ----------
-    const MD = 160, mpos = new Float32Array(MD * 3);
+    // ---------- 悬念页：居中衬线大字，纯排版叙事 ----------
+    this.suspense = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 4.63),
+      new THREE.MeshBasicMaterial({ map: suspenseTex.tex, transparent: true, depthWrite: false, fog: false }));
+    this.suspense.position.set(0, 0.78, -8);
+    this.scene.add(this.suspense);
+
+    // ---------- 金色软盘：75% 处的 3D 戏剧性登场（决胜"盘"） ----------
+    this.goldGroup = new THREE.Group();
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xcfa64b, metalness: 0.95, roughness: 0.28 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.42, 1.42, 0.1), goldMat);
+    const shutter = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.4, 0.024),
+      new THREE.MeshStandardMaterial({ color: 0xd9d9d9, metalness: 0.9, roughness: 0.35 }));
+    shutter.position.set(0, 0.42, 0.06);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.032, 24),
+      new THREE.MeshStandardMaterial({ color: 0xb8933a, metalness: 0.95, roughness: 0.3 }));
+    hub.rotation.x = Math.PI / 2; hub.position.set(0, 0.42, 0.075);
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.36),
+      new THREE.MeshBasicMaterial({ map: goldLabel.tex, transparent: true }));
+    label.position.set(0, -0.42, 0.052);
+    this.goldGroup.add(body, shutter, hub, label);
+    this.goldGroup.position.set(0, 0.55, -19);
+    this.goldGroup.rotation.set(0.12, 0, 0.06);
+    this.scene.add(this.goldGroup);
+    const goldLight = new THREE.PointLight(0xffd27a, 34, 20, 1.7);
+    goldLight.position.set(0.6, 1.4, -17.4);
+    this.scene.add(goldLight);
+    const rimLight = new THREE.PointLight(0x8a7bff, 14, 22, 1.8);
+    rimLight.position.set(-5, 2.4, -18.5);
+    this.scene.add(rimLight);
+
+    // 暖色 bokeh 光斑（远景氛围）
+    const bokehTex = makeCanvasTexture(256, 256, (ctx, c) => {
+      const g = ctx.createRadialGradient(c.width / 2, c.height / 2, 4, c.width / 2, c.height / 2, c.width / 2);
+      g.addColorStop(0, 'rgba(255,205,130,.9)'); g.addColorStop(0.4, 'rgba(255,180,90,.25)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, c.width, c.height);
+    });
+    [[-3.6, -0.9, -20.5, 1.6], [3.8, 1.3, -21, 2.2]].forEach(([x, y, z, sc]) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: bokehTex.tex, transparent: true, opacity: 0.3, depthWrite: false }));
+      sp.position.set(x, y, z); sp.scale.setScalar(sc); this.scene.add(sp);
+    });
+
+    // ---------- 裁切大标题 + 副题（掠过式滚动叙事） ----------
+    this.goldHeadMat = new THREE.MeshBasicMaterial({ map: goldHead.tex, transparent: true, depthWrite: false, fog: false });
+    this.goldHead = new THREE.Mesh(new THREE.PlaneGeometry(8.6, 1.61), this.goldHeadMat);
+    this.goldHead.position.set(0, 2.62, -19.6);
+    this.scene.add(this.goldHead);
+    this.goldSubMat = new THREE.MeshBasicMaterial({ map: goldSub.tex, transparent: true, depthWrite: false, fog: false });
+    this.goldSub = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 0.98), this.goldSubMat);
+    this.goldSub.position.set(0, -1.42, -19.4);
+    this.scene.add(this.goldSub);
+
+    // 浮尘（蓝白微尘，弱）
+    const MD = 140, mpos = new Float32Array(MD * 3);
     for (let i = 0; i < MD; i++) {
-      mpos[i * 3] = (Math.random() - 0.5) * 9;
+      mpos[i * 3] = (Math.random() - 0.5) * 10;
       mpos[i * 3 + 1] = Math.random() * 4 - 1.5;
-      mpos[i * 3 + 2] = 6 - Math.random() * 36;
+      mpos[i * 3 + 2] = 6 - Math.random() * 34;
     }
     const motesGeo = new THREE.BufferGeometry();
     motesGeo.setAttribute('position', new THREE.BufferAttribute(mpos, 3));
     this.motes = new THREE.Points(motesGeo, new THREE.PointsMaterial({
-      color: 0x53ff9a, size: 0.025, transparent: true, opacity: 0.5, depthWrite: false,
+      color: 0x9d9ec4, size: 0.02, transparent: true, opacity: 0.32, depthWrite: false,
     }));
     this.scene.add(this.motes);
-
-    // 学习卡片：两侧交错，随相机前进逐一掠过
-    this.cards = cardTextures.map(({ tex }, i) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.78, 2.225), // 竖开本 640×800
-        new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
-      const side = i % 2 === 0 ? -1 : 1;
-      m.position.set(side * 3.1, 0.4 + (i % 3) * 0.5, -4 - i * 4.4);
-      m.rotation.y = side * -0.5;
-      m.userData.phase = i * 1.7;
-      m.userData.baseY = 0.4 + (i % 3) * 0.5;
-      this.scene.add(m);
-      return m;
-    });
-
-    // 章节横幅：与纸页同语言的编辑部题头
-    const banner = makeCanvasTexture(1024, 128, (ctx, c) => {
-      ctx.fillStyle = '#f3f0e7'; ctx.fillRect(0, 0, c.width, c.height);
-      ctx.strokeStyle = '#23201a'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(24, 10); ctx.lineTo(c.width - 24, 10); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(24, c.height - 10); ctx.lineTo(c.width - 24, c.height - 10); ctx.stroke();
-      ctx.fillStyle = '#23201a'; ctx.font = '700 54px ' + SERIF; ctx.textAlign = 'left';
-      ctx.fillText('屏内信号', 44, 86);
-      ctx.font = '500 21px ' + MONO; ctx.fillStyle = '#6b6552'; ctx.textAlign = 'right';
-      try { ctx.letterSpacing = '4px'; } catch (e) {}
-      ctx.fillText('SIX STUDIES · INSIDE THE SIGNAL', c.width - 44, 80);
-      try { ctx.letterSpacing = '0px'; } catch (e) {}
-      ctx.textAlign = 'left';
-    });
-    repaintFns.push(() => banner.repaint());
-    this.banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.75),
-      new THREE.MeshBasicMaterial({ map: banner.tex, transparent: true }));
-    this.banner.position.set(0, 2.4, -1.5); this.scene.add(this.banner);
 
     // 揭示层：屏幕空间采样下一场景（挂相机、禁深度、最后渲染）
     this.revealMat = mat(/* glsl */`
@@ -994,7 +941,7 @@ class InsideScene {
         float n = noise(gl_FragCoord.xy / 9.0) * 0.6 + noise(gl_FragCoord.xy / 33.0) * 0.4;
         float open = smoothstep(uReveal - 0.06, uReveal + 0.06, n); // 噪声阈值推进
         float edge = smoothstep(0.12, 0.0, abs(n - uReveal)) * step(0.02, uReveal);
-        vec3 col = texture2D(uNext, suv).rgb + vec3(0.1, 1.0, 0.4) * edge * 0.8;
+        vec3 col = texture2D(uNext, suv).rgb + vec3(1.0, 0.92, 0.75) * edge * 0.8;
         gl_FragColor = vec4(col, 1.0 - open);
       }`, { uNext: { value: null }, uReveal: { value: 0 } },
       { transparent: true, depthTest: false, depthWrite: false });
@@ -1019,23 +966,20 @@ class InsideScene {
       lerp(7.5, -23, fly),
     );
     this.camera.lookAt(mouse.sx * 1.2, 0.6 + mouse.sy * 0.4, this.camera.position.z - 8);
-    this.cards.forEach((c) => {
-      c.lookAt(this.camera.position);
-      // 出场：相机临近时 expoOut 落位（有重量的浮现，替代原地静挂）
-      const ahead = this.camera.position.z - c.position.z; // 前方为正
-      const app = expoOut(clamp(1 - ahead / 10, 0, 1));
-      c.scale.setScalar(0.55 + 0.45 * app);
-      c.position.y = c.userData.baseY + (1 - app) * 0.9
-        + (REDUCED ? 0 : Math.sin(t * 0.9 + c.userData.phase) * 0.12);
-    });
+    const cz = this.camera.position.z;
+    // 悬念页：穿过后淡出，避免糊脸
+    this.suspense.material.opacity = clamp((cz + 8) / 2.4, 0, 1);
+    // 金盘登场：临近落位 + 缓转 + 呼吸
+    const app = expoOut(clamp(1 - (cz + 19) / 9, 0, 1));
+    this.goldGroup.scale.setScalar(0.55 + 0.45 * app);
+    this.goldGroup.position.y = 0.55 + (1 - app) * 0.9 + (REDUCED ? 0 : Math.sin(t * 0.8) * 0.1);
+    this.goldHeadMat.opacity = this.goldSubMat.opacity = 0.92 * app;
+    if (!REDUCED) this.goldGroup.rotation.y = t * 0.45;
     this.revealMat.uniforms.uNext.value = nextTexture;
     this.revealMat.uniforms.uReveal.value = smoothstep(0.80, 0.95, p);
     this.fitRevealToCamera();
-    // 核心光呼吸 + 信号尘埃缓漂
-    if (!REDUCED) {
-      this.core.scale.setScalar(0.92 + Math.sin(t * 1.6) * 0.08);
-      this.motes.position.z = (t * 0.35) % 4.4;
-    }
+    // 微尘缓漂
+    if (!REDUCED) this.motes.position.z = (t * 0.35) % 4.4;
 
     renderer.setRenderTarget(this.fbo);
     renderer.render(this.scene, this.camera);
@@ -1055,7 +999,7 @@ class EndScene {
     this.camera.position.set(0, 0, 3.2);
     this.activeRange = [0.68, 1.05];
 
-    this.title = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.1),
+    this.title = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.75),
       new THREE.MeshBasicMaterial({ map: endTitle.tex, transparent: true }));
     this.title.position.y = 0.1; this.scene.add(this.title);
 
@@ -1425,9 +1369,8 @@ function frame() {
   mouse.sy = lerp(mouse.sy, mouse.y, 0.06);
   shared.uTime.value = t;
 
-  // 鼠标权重通道（先跑，产出本帧拖尾贴图供场景/compose 采样）
+  // 鼠标权重通道（先跑，产出本帧拖尾贴图供 compose 采样）
   const mwTex = updateMouseWeight(t);
-  scenes[1].gridMat.uniforms.uMouseW.value = mwTex;
   composeMat.uniforms.uMouseW.value = mwTex;
 
   // 选择性渲染 + 倒序链：END → INSIDE → HERO，next 纹理逐级下传
