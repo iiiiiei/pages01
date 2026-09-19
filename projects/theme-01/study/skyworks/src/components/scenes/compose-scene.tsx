@@ -89,8 +89,9 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
       const holdDist = length(p.sub(u.pointer.sub(0.5).mul(vec2(u.aspect, 1))));
       const holdGlow = oneMinus(smoothstep(0.0, 0.26, holdDist)).mul(u.hold);
 
-      // —— 热值 → 六档量化 ——
-      const t = clamp(luma.mul(1.15).add(heatNow.mul(1.3)).add(holdGlow), 0, 1);
+      // —— 热值 → 六档量化（参考站语义：深色底，指针是唯一热源；
+      //     场景只留 18% 余温剪影，天空亮部不再顶满热档） ——
+      const t = clamp(luma.mul(0.18).add(heatNow.mul(1.35)).add(holdGlow), 0, 1);
       const band = floor(t.mul(5.999)).div(5.0);
       const ink = palette(band);
 
