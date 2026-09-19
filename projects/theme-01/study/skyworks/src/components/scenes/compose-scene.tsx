@@ -11,7 +11,7 @@ import { scrollPosition } from "../store";
 import { useCreateSceneAndCamera } from "../utils/use-create-scene-and-camera";
 
 const PAGES_COUNT = 3;
-const CELL_PX = 10; // solace：10px 热像元
+const CELL_PX = 20; // 热像元与场景 ASCII 网格（20px）1:1 对齐：一格一字符，消除双层网格摩尔纹
 
 export type ComposeSceneRenderHandle = (args: { state: RootStateWebGPU; textures: (Texture | null)[] }) => void;
 
@@ -150,8 +150,8 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
       pow: 1.2,
       brightness: 1,
       contrast: 1,
-      chromaticAbberationStrength: 1.5,
-      noiseIntensity: 1,
+      chromaticAbberationStrength: 0.7, // 像素艺术不需要彩虹毛边
+      noiseIntensity: 0.6, // 颗粒减量，避免细格碎屑化
       noiseVelocity: 1,
       time,
     });
