@@ -91,12 +91,12 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
 
       // —— 热值 → 六档量化（参考站语义：深色底，指针是唯一热源；
       //     场景只留 18% 余温剪影，天空亮部不再顶满热档） ——
-      const t = clamp(luma.mul(0.18).add(heatNow.mul(1.35)).add(holdGlow), 0, 1);
+      const t = clamp(luma.mul(0.06).add(heatNow.mul(1.6)).add(holdGlow), 0, 1);
       const band = floor(t.mul(5.999)).div(5.0);
       const ink = palette(band);
 
       // 暗底 + 环境微热（画面自活）+ 涟漪亮环
-      const bg = vec3(0.027, 0.027, 0.059);
+      const bg = vec3(0.10, 0.10, 0.18); // 原版深蓝黑 #1a1a2e
       let out = mix(bg, ink, smoothstep(0.02, 0.1, t));
       out = out.add(vec3(ring.mul(0.3)));
       return vec4(out, 1.0);
@@ -144,15 +144,15 @@ export function ComposeScene({ renderHandle }: { renderHandle: RefObject<Compose
 
     postProcessingRender({
       texture: fbo.texture,
-      bloomIntensity: 1.5,
+      bloomIntensity: 0.7,
       bloomThreshold: 0.1,
       bloomRadius: 0.4,
       bloomSmoothing: 0.2,
       pow: 1.2,
       brightness: 1,
       contrast: 1,
-      chromaticAbberationStrength: 0.7, // 像素艺术不需要彩虹毛边
-      noiseIntensity: 0.6, // 颗粒减量，避免细格碎屑化
+      chromaticAbberationStrength: 0, // 纯像素：无毛边
+      noiseIntensity: 0.35,
       noiseVelocity: 1,
       time,
     });

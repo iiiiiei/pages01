@@ -55,10 +55,12 @@ export function HeatPass({ renderHandle }: { renderHandle: RefObject<HeatPassRen
       const pointerDistance = length(aspectUv.sub(currentMouse));
 
       const hold = holdUniform.current;
-      // 胶囊注入：移动注墨，按住加大半径与强度
-      const lineMask = oneMinus(smoothstep(hold.mul(0.02).add(0.010), hold.mul(0.02).add(0.026), mouseDistance));
-      const pointMask = oneMinus(smoothstep(0.0, hold.mul(0.02).add(0.02), pointerDistance)).mul(hold);
-      const injection = max(lineMask, pointMask).mul(hold.mul(0.75).add(0.55)).mul(velocityUniform.current);
+      // 胶囊注入（原版语义：宽软光带，慢速移动也有基础热量）
+      const lineMask = oneMinus(smoothstep(hold.mul(0.03).add(0.030), hold.mul(0.04).add(0.085), mouseDistance));
+      const pointMask = oneMinus(smoothstep(0.0, hold.mul(0.05).add(0.05), pointerDistance)).mul(hold);
+      const injection = max(lineMask, pointMask)
+        .mul(hold.mul(0.8).add(0.5))
+        .mul(velocityUniform.current.mul(0.65).add(0.35));
 
       const prevAt = (ox: any, oy: any) =>
         texture(previousTextureUniform.current, vec2(uv().x.add(ox), oneMinus(uv().y.add(oy)))).r;
@@ -70,7 +72,7 @@ export function HeatPass({ renderHandle }: { renderHandle: RefObject<HeatPassRen
         .add(prevAt(0, px.mul(-1)))
         .mul(0.25);
       // 扩散 0.09 · 冷却 0.845/秒（约 4 秒半衰）→ 墨迹长留
-      const heat = max(mix(prevHeat, blurred, 0.09).mul(pow(float(0.845), deltaUniform.current)), injection);
+      const heat = max(mix(prevHeat, blurred, 0.2).mul(pow(float(0.88), deltaUniform.current)), injection);
 
       return vec4(clamp(heat, 0, 1), 0, 0, 1);
     })();
