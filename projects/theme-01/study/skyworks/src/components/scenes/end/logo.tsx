@@ -2,7 +2,7 @@ import { useFBO } from "@react-three/drei";
 import { createPortal } from "@react-three/fiber";
 import { useSpring } from "motion/react";
 import { type RefObject, useImperativeHandle, useMemo, useRef } from "react";
-import { Color, Group, Mesh, MeshLambertMaterial, type Texture } from "three";
+import { Color, Group, InstancedMesh, Matrix4, MeshLambertMaterial, Object3D, type Texture } from "three";
 import { BoxGeometry } from "three/webgpu";
 import { abs, cos, Fn, length, mix, pow, sin, smoothstep, uniform, uv, vec2, vec3 } from "three/tsl";
 import { MeshBasicNodeMaterial } from "three/webgpu";
@@ -73,32 +73,38 @@ export function Logo({ renderHandle }: { renderHandle: RefObject<LogoRenderHandl
     return mat;
   }, []);
 
-  /* 像素字标：方块拼装 IIIIIEI（替换 skyworks GLB，风格保持像素） */
+  /* 体素字标：5×7 像素字模拼装 IIIIIEI（真·像素化，替换 skyworks GLB） */
   const logoScene = useMemo(() => {
     const group = new Group();
-    const u = 0.5;
+    const font: Record<string, Array<[number, number]>> = {
+      I: Array.from({ length: 7 }, (_, y) => [2, y] as [number, number]),
+      E: [
+        ...Array.from({ length: 7 }, (_, y) => [0, y] as [number, number]),
+        [1, 0], [2, 0], [3, 0], [4, 0],
+        [1, 3], [2, 3], [3, 3],
+        [1, 6], [2, 6], [3, 6], [4, 6],
+      ],
+    };
     const word = "IIIIIEI";
-    const step = 1.8 * u;
-    let x = -((word.length - 1) * step) / 2;
-    for (const ch of word) {
-      if (ch === "I") {
-        const bar = new Mesh(new BoxGeometry(u, 3 * u, u), logoMaterial);
-        bar.position.set(x, 0, 0);
-        group.add(bar);
-      } else {
-        const stem = new Mesh(new BoxGeometry(u, 3 * u, u), logoMaterial);
-        stem.position.set(x, 0, 0);
-        group.add(stem);
-        for (const yy of [u, 0, -u]) {
-          const arm = new Mesh(new BoxGeometry(2 * u, u, u), logoMaterial);
-          arm.position.set(x + u, yy, 0);
-          group.add(arm);
-        }
-      }
-      x += step;
-    }
+    const cells: Array<[number, number]> = [];
+    word.split("").forEach((ch, li) => {
+      for (const [cx, cy] of font[ch]) cells.push([li * 6 + cx, cy]);
+    });
+    const c = 0.35;
+    const w = (word.length - 1) * 6 + 5;
+    const inst = new InstancedMesh(new BoxGeometry(c, c, c), logoMaterial, cells.length);
+    const m = new Matrix4();
+    const o = new Object3D();
+    cells.forEach(([cx, cy], k) => {
+      o.position.set((cx - (w - 1) / 2) * c, (3 - cy) * c, 0);
+      o.updateMatrix();
+      m.copy(o.matrix);
+      inst.setMatrixAt(k, m);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    group.add(inst);
     return group;
-  }, [logoMaterial]);
+    }, [logoMaterial]);
 
   const fbo = useFBO();
   useImperativeHandle(renderHandle, () => ({ state }) => {

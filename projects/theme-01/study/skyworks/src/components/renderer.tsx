@@ -36,21 +36,27 @@ import { HeroScene, type HeroSceneRenderHandle } from "./scenes/hero";
 import { getPageScrollProgress } from "./utils/get-page-scroll-progress";
 
 function LoadingTracker() {
-  const { active, loaded } = useProgress();
-  pageLoadProgress.set(loaded / 8);
+  const { active, loaded, total } = useProgress();
+  pageLoadProgress.set(total > 0 ? Math.min(1, loaded / total) : 0);
 
   useLayoutEffect(() => {
-    if (loaded === 8) {
-      setTimeout(() => {
+    if (total > 0 && loaded >= total && !active) {
+      const t = setTimeout(() => {
         pageLoadProgress.set(1);
         if (!pageLoaded.get()) pageLoaded.set(true);
-      }, 1000);
-      return;
+      }, 800);
+      return () => clearTimeout(t);
     }
+  }, [active, loaded, total]);
 
-    if (pageLoaded.get()) return;
-    if (!active && loaded === 8) pageLoaded.set(true);
-  }, [active, loaded]);
+  // 兜底：无论资产计数如何，6 秒后放行（黑屏卡死保险）
+  useEffect(() => {
+    const t = setTimeout(() => {
+      pageLoadProgress.set(1);
+      if (!pageLoaded.get()) pageLoaded.set(true);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, []);
 
   return null;
 }
