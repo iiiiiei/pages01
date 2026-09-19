@@ -1,57 +1,35 @@
 /** biome-ignore-all lint/style/noNonNullAssertion: "" */
 "use client";
 
-import Lenis from "lenis";
+/* 原生滚动版：Lenis 依赖连续 rAF 驱动动画，IAB 主线程小憩时滚轮完全失效；
+   改为 overflow 容器原生滚动 + scroll 事件直写 scrollPosition store（下游场景链不变） */
 
 import { type ReactNode, useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
+import { scrollPosition } from "./store";
 import { pagesConfig } from "./pages-config";
-import { scrollPosition, scrollVelocity } from "./store";
 import { pageHeightUnitsToPixels } from "./utils/page-height-units";
 
 export function ScrollContainer({ children }: { children: ReactNode }) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const lenisRef = useRef<Lenis>(null);
-
-  const scrollHandler = useEffectEvent((lenis: Lenis) => {
-    scrollPosition.set(lenis.scroll);
-    scrollVelocity.set(lenis.velocity);
-  });
-
   const updatePageHeight = useEffectEvent(() => {
     const accumulatedPageHeight = pagesConfig.get().reduce((acc, page) => acc + page.length, 0);
     document.documentElement.style.setProperty("--page-height", `${pageHeightUnitsToPixels(accumulatedPageHeight)}px`);
-    requestAnimationFrame(() => {
-      lenisRef.current?.resize();
-    });
   });
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: "not needed"
   useLayoutEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
 
-    const lenis = new Lenis({
-      autoRaf: true,
-      orientation: "vertical",
-      wrapper: scrollContainer,
-      syncTouch: true,
-      syncTouchLerp: 0.05,
-      touchMultiplier: 1,
-    });
-
-    lenisRef.current = lenis;
-    lenis.start();
-
-    const unsubscribeScroll = lenis.on("scroll", scrollHandler);
-
+    const onScroll = () => {
+      scrollPosition.set(scrollContainer.scrollTop);
+    };
+    onScroll();
+    scrollContainer.addEventListener("scroll", onScroll, { passive: true });
     updatePageHeight();
 
     return () => {
-      unsubscribeScroll?.();
-      lenisRef.current?.destroy();
-      lenisRef.current = null;
-      scrollContainer.blur();
+      scrollContainer.removeEventListener("scroll", onScroll);
     };
   }, []);
 
